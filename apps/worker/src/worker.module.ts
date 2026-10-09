@@ -1,8 +1,21 @@
-import { Module } from '@nestjs/common';
+import { type DynamicModule, Module } from '@nestjs/common';
 
-import { KeepAliveService } from './keep-alive.service';
+import {
+  HEARTBEAT_OPTIONS,
+  HeartbeatService,
+  type HeartbeatOptions,
+} from './heartbeat/heartbeat.service';
 
-@Module({
-  providers: [KeepAliveService],
-})
-export class WorkerModule {}
+export interface WorkerModuleOptions {
+  heartbeat: HeartbeatOptions;
+}
+
+@Module({})
+export class WorkerModule {
+  static register(options: WorkerModuleOptions): DynamicModule {
+    return {
+      module: WorkerModule,
+      providers: [{ provide: HEARTBEAT_OPTIONS, useValue: options.heartbeat }, HeartbeatService],
+    };
+  }
+}

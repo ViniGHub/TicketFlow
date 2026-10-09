@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { defaultHeartbeatFile } from '../heartbeat/heartbeat';
+
 /** Variável opcional: `CHAVE=` vazio no .env conta como ausente. */
 const optionalString = z
   .string()
@@ -18,6 +20,7 @@ export const workerEnvSchema = z.object({
   SMTP_PORT: z.coerce.number().int().min(1).max(65_535),
   EMAIL_FROM: z.email(),
   RESEND_API_KEY: optionalString,
+  WORKER_HEARTBEAT_FILE: z.string().min(1).default(defaultHeartbeatFile()),
 });
 
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;

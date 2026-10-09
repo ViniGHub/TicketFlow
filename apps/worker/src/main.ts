@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 
 import { parseWorkerEnv } from './config/env';
 import { createLogger } from './config/logger';
+import { HEARTBEAT_INTERVAL_MS } from './heartbeat/heartbeat';
 import { WorkerModule } from './worker.module';
 
 async function bootstrap(): Promise<void> {
@@ -16,7 +17,12 @@ async function bootstrap(): Promise<void> {
 
   const env = parseWorkerEnv(process.env);
   const logger = createLogger(env.LOG_LEVEL);
-  const app = await NestFactory.createApplicationContext(WorkerModule, { logger });
+  const app = await NestFactory.createApplicationContext(
+    WorkerModule.register({
+      heartbeat: { file: env.WORKER_HEARTBEAT_FILE, intervalMs: HEARTBEAT_INTERVAL_MS },
+    }),
+    { logger },
+  );
 
   // SIGTERM/SIGINT disparam o shutdown do Nest (fecha conexões e jobs em andamento).
   app.enableShutdownHooks();

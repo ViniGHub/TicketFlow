@@ -1,4 +1,5 @@
 import { type INestApplication } from '@nestjs/common';
+import { ExpressAdapter } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { healthLiveResponseSchema } from '@ticketflow/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -11,7 +12,9 @@ describe('GET /health/live', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleRef.createNestApplication({ logger: false });
+    // Adapter importado estaticamente: sem isso o Nest carrega o Express sob demanda dentro
+    // deste hook, e o carregamento a frio estoura o timeout com a máquina sob carga.
+    app = moduleRef.createNestApplication(new ExpressAdapter(), { logger: false });
     await app.listen(0, '127.0.0.1');
     baseUrl = await app.getUrl();
   });

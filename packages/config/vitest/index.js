@@ -12,8 +12,11 @@ const integrationInclude = ['src/**/*.int-spec.{ts,tsx}'];
 /**
  * Configuração base com dois projetos: `unit` e `integration`.
  * @param {import('vitest/config').UserConfig} [overrides]
+ * @param {{ integrationGlobalSetup?: string[] }} [options]
+ *   `integrationGlobalSetup`: arquivos de globalSetup só do projeto de integração
+ *   (ex.: subir containers). Os testes unitários nunca os executam.
  */
-export function defineVitestConfig(overrides = {}) {
+export function defineVitestConfig(overrides = {}, { integrationGlobalSetup = [] } = {}) {
   return mergeConfig(
     defineConfig({
       test: {
@@ -25,6 +28,7 @@ export function defineVitestConfig(overrides = {}) {
             test: {
               name: 'integration',
               include: integrationInclude,
+              globalSetup: integrationGlobalSetup,
               testTimeout: 60_000,
               hookTimeout: 120_000,
             },
@@ -37,11 +41,12 @@ export function defineVitestConfig(overrides = {}) {
 }
 
 /**
- * Preset para apps NestJS: o esbuild (padrão do Vite) não emite metadata de decorators,
+ * Preset para apps NestJS: o transformador padrão do Vite não emite metadata de decorators,
  * da qual a injeção de dependência do Nest depende. O SWC emite.
  * @param {import('vitest/config').UserConfig} [overrides]
+ * @param {{ integrationGlobalSetup?: string[] }} [options]
  */
-export function defineNestVitestConfig(overrides = {}) {
+export function defineNestVitestConfig(overrides = {}, options = {}) {
   return defineVitestConfig(
     mergeConfig(
       {
@@ -50,5 +55,6 @@ export function defineNestVitestConfig(overrides = {}) {
       },
       overrides,
     ),
+    options,
   );
 }

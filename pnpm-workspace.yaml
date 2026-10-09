@@ -4,5 +4,13 @@ packages:
 allowBuilds:
   '@prisma/engines': true
   '@swc/core': true
+  cpu-features: false
   prisma: true
+  protobufjs: false
+  ssh2: false
   unrs-resolver: true
+# Correções de segurança em dependências indiretas do CLI do Prisma (7.10 fixa versões
+# vulneráveis). Remover quando o Prisma atualizar: CVE-2026-40345 e GHSA-3f6p-5ww8-9rcr.
+overrides:
+  deepmerge-ts: 8.0.2
+  mysql2: 3.22.0

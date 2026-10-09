@@ -6,7 +6,7 @@ reserva de estoque sem overselling, webhooks idempotentes e processamento assín
 > ⚠️ Projeto de portfólio. O Stripe está em **modo teste**: nenhuma cobrança real é feita.
 > Use o cartão `4242 4242 4242 4242`, qualquer data futura e qualquer CVC.
 
-[![CI](https://github.com/SEU_USUARIO/ticketflow/actions/workflows/ci.yml/badge.svg)](https://github.com/SEU_USUARIO/ticketflow/actions/workflows/ci.yml)
+[![CI](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml)
 
 **Demo:** _adicione o link do deploy_ · **API docs:** _link do Swagger_
 
@@ -38,19 +38,21 @@ Veja o diagrama completo e o fluxo de pagamento em [ARCHITECTURE.md](ARCHITECTUR
 |---|---|
 | Front-end | Next.js, TypeScript, Tailwind |
 | API | NestJS, TypeScript, OpenAPI |
-| Worker | BullMQ + Redis |
+| Worker | NestJS standalone + BullMQ + Redis (transactional outbox) |
 | Banco | PostgreSQL + Prisma |
 | Pagamento | Stripe Checkout (modo teste) |
 | E-mail | Mailpit (dev) / Resend (prod) |
-| Infra | Docker, GitHub Actions, GHCR |
+| Monorepo | pnpm workspaces + Turborepo |
+| Testes | Vitest, Testcontainers, Playwright |
+| Infra | Docker, GitHub Actions, GHCR, OpenTelemetry |
 
 ## Como rodar localmente
 
-Pré-requisitos: Docker, Node 20+, pnpm e [Stripe CLI](https://stripe.com/docs/stripe-cli).
+Pré-requisitos: Docker, Node 24 LTS, pnpm e [Stripe CLI](https://stripe.com/docs/stripe-cli).
 
 ```bash
-git clone https://github.com/SEU_USUARIO/ticketflow.git
-cd ticketflow
+git clone https://github.com/ViniGHub/TicketFlow.git
+cd TicketFlow
 cp .env.example .env          # preencha as chaves de teste do Stripe
 docker compose up -d          # postgres, redis, mailpit
 pnpm install
@@ -77,7 +79,7 @@ Para subir **tudo** em containers: `docker compose --profile app up --build`.
 pnpm lint
 pnpm typecheck
 pnpm test                # unitários
-pnpm test:integration    # requer postgres e redis
+pnpm test:integration    # Testcontainers (requer Docker)
 ```
 
 O teste de concorrência (`inventory.concurrency.spec.ts`) dispara compras simultâneas e
@@ -89,13 +91,23 @@ verifica que nunca há overselling.
   o pagamento é o webhook assinado.
 - **Estoque atômico:** `UPDATE ... WHERE available >= qty` dentro de transação, com
   `CHECK (available >= 0)` como segunda defesa.
-- **Idempotência de webhook:** `event.id` gravado com constraint UNIQUE.
+- **Idempotência de webhook:** `event.id` gravado com constraint UNIQUE na mesma transação
+  do processamento; se algo falhar, tudo volta e o Stripe reenvia.
+- **Transactional outbox:** jobs nascem de uma tabela gravada junto com a mudança de
+  negócio, então um pedido pago nunca fica sem e-mail por falha do Redis.
+- **Expira no Stripe antes de devolver o estoque:** uma sessão expirada não pode ser paga,
+  o que elimina quase todos os casos de pagamento tardio.
 - **Stripe Checkout hospedado:** dados de cartão nunca passam pelo meu servidor.
 - **Fila para trabalho assíncrono:** respostas rápidas ao Stripe e retentativas com backoff.
+- **Sessão em cookie httpOnly via BFF:** o front faz proxy de `/api/*`, então o cookie é
+  first-party mesmo com front e API em provedores diferentes.
 
 Detalhes e trade-offs em [`docs/adr/`](docs/adr/).
 
 ## Roadmap
+
+O plano de construção, dividido em fases e etapas, está em [ROADMAP.md](ROADMAP.md).
+Próximas funcionalidades depois do MVP:
 
 - [ ] Pix via Stripe
 - [ ] Reembolso pelo painel do organizador

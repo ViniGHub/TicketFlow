@@ -1,0 +1,18 @@
+# O contexto de build é a raiz do monorepo; tudo que não é código-fonte fica de fora.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+packages/db/src/generated
+
+.git
+.github
+.husky
+.env
+.env.*
+!.env.example
+
+docs
+*.md

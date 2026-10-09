@@ -1,0 +1,24 @@
+# dependências
+node_modules/
+
+# saídas de build
+dist/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+coverage/
+.turbo/
+
+# client gerado pelo Prisma
+packages/db/src/generated/
+
+# variáveis de ambiente (manter só o .env.example)
+.env
+.env.*
+!.env.example
+
+# sistema / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.log

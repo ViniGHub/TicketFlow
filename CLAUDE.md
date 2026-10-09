@@ -12,6 +12,10 @@ Stripe Checkout (modo teste). Projeto de portfólio: o foco é qualidade de enge
 **Leia `ARCHITECTURE.md` antes de implementar qualquer coisa.** Ele é a fonte da verdade
 para modelo de dados, fluxo de pagamento e regras de negócio.
 
+**`ROADMAP.md` define a ordem de construção**: fases e etapas, cada uma com escopo, testes
+obrigatórios e critérios de "Pronto quando". Implemente uma etapa por vez, sem adiantar
+escopo de etapas seguintes.
+
 ## Stack
 
 - **Node 24 LTS**. Monorepo com **pnpm workspaces + Turborepo**
@@ -69,7 +73,8 @@ Se algum comando não existir ainda, crie-o em vez de contornar.
 
 ## Fluxo de trabalho
 
-- Uma funcionalidade por branch: `feat/<nome>`, `fix/<nome>`, `chore/<nome>`.
+- Uma etapa do ROADMAP por branch, com o nome indicado na etapa (`feat/<nome>`,
+  `fix/<nome>`, `chore/<nome>`, `docs/<nome>`, `test/<nome>`).
 - **Conventional Commits**: `feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`.
 - Commits pequenos e focados. PR com descrição clara (o quê, por quê, como testar).
 - Antes de dar uma tarefa como concluída: `pnpm lint && pnpm typecheck && pnpm test`.
@@ -87,7 +92,7 @@ Se algum comando não existir ainda, crie-o em vez de contornar.
 
 ## Ao trabalhar numa tarefa
 
-1. Releia o trecho relevante do `ARCHITECTURE.md`.
+1. Releia a etapa no `ROADMAP.md` e o trecho relevante do `ARCHITECTURE.md`.
 2. Proponha um plano curto antes de editar muitos arquivos.
 3. Implemente em passos pequenos, rodando os testes a cada passo.
 4. Ao final, resuma o que mudou e liste o que ficou pendente.

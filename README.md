@@ -106,6 +106,9 @@ Detalhes e trade-offs em [`docs/adr/`](docs/adr/).
 
 ## Roadmap
 
+O plano de construção, dividido em fases e etapas, está em [ROADMAP.md](ROADMAP.md).
+Próximas funcionalidades depois do MVP:
+
 - [ ] Pix via Stripe
 - [ ] Reembolso pelo painel do organizador
 - [ ] Lista de espera para eventos esgotados

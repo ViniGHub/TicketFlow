@@ -71,16 +71,28 @@ stripe listen --forward-to localhost:3000/webhooks/stripe
 - API + Swagger: http://localhost:3000/docs
 - Caixa de e-mail (Mailpit): http://localhost:8025
 
-Para subir **tudo** em containers: `docker compose --profile app up --build`.
+Para subir **tudo** em containers: `docker compose --profile app up --build`. Os padrões do
+`docker-compose.yml` permitem subir mesmo sem `.env` (útil no CI); a web fica em
+http://localhost:3001 e a API em http://localhost:3000/health/live.
 
 ## Testes
 
 ```bash
 pnpm lint
 pnpm typecheck
-pnpm test                # unitários
-pnpm test:integration    # Testcontainers (requer Docker)
+pnpm test                # unitários (*.spec.ts), sem dependências externas
+pnpm test:integration    # integração (*.int-spec.ts): sobe Postgres e Redis com Testcontainers
 ```
+
+Os testes de integração precisam de Docker, mas **não** do `docker compose`: cada execução
+sobe containers próprios e descartáveis. Sem Docker na máquina, eles rodam no CI.
+
+## CI
+
+Cada PR roda, em paralelo: lint + typecheck, testes unitários, testes de integração, build
+das três imagens com scan do Trivy, um smoke test do `docker compose --profile app` (espera
+os healthchecks e chama os endpoints) e varredura de segredos (gitleaks) e de dependências
+(Trivy). Dependências são atualizadas pelo Dependabot.
 
 O teste de concorrência (`inventory.concurrency.spec.ts`) dispara compras simultâneas e
 verifica que nunca há overselling.

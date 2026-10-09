@@ -26,6 +26,7 @@ escopo de etapas seguintes.
 - `packages/domain`: regras de negócio puras (máquina de estados, reserva, expiração)
 - `packages/contracts`: schemas zod e tipos compartilhados (DTOs, payloads de jobs)
 - `packages/config`: tsconfig, ESLint (flat config), Prettier, preset do Vitest
+- `packages/testing`: helpers de teste (Testcontainers, limpeza de estado entre testes)
 - PostgreSQL 17, Redis 8, Mailpit (e-mail local), Stripe (modo teste)
 - Testes: **Vitest** (com `unplugin-swc` no NestJS) + **Testcontainers** na integração;
   Playwright (e2e, opcional)

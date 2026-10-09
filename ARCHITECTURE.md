@@ -49,13 +49,15 @@ ticketflow/
 │   ├── db/                  # Prisma schema, migrations (com SQL manual dos CHECKs), client
 │   ├── domain/              # regras puras: máquina de estados, reserva/expiração, erros de domínio
 │   ├── contracts/           # schemas zod e tipos compartilhados (DTOs, payloads de jobs)
-│   └── config/              # tsconfig base, ESLint (flat config), Prettier, Vitest preset
+│   ├── config/              # tsconfig base, ESLint (flat config), Prettier, Vitest preset
+│   └── testing/             # helpers de teste: Testcontainers (Postgres, Redis), limpeza de estado
 ├── docs/
 │   ├── adr/                 # decisões de arquitetura
 │   └── images/              # diagramas e GIFs
 ├── .github/
+│   ├── actions/setup/       # setup compartilhado dos jobs (Node, pnpm, cache do Turborepo)
 │   ├── workflows/{ci.yml,deploy.yml}
-│   └── renovate.json        # atualização automática de dependências
+│   └── dependabot.yml       # atualização automática de dependências
 ├── docker-compose.yml
 ├── turbo.json
 ├── .env.example

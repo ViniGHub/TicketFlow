@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Um push novo na mesma branch cancela a execução anterior, que ficou obsoleta.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  quality:
+    name: Lint e typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  unit:
+    name: Testes unitários
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: pnpm test
+
+  integration:
+    name: Testes de integração
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      # Os runners do GitHub têm Docker; o Testcontainers sobe Postgres e Redis.
+      - run: pnpm test:integration
+
+  images:
+    name: Imagem ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, worker, web]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+
+      # Build sem push. O cache de camadas fica no cache do GitHub Actions, por app.
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          tags: ticketflow-${{ matrix.app }}:local
+          load: true
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,scope=${{ matrix.app }},mode=max
+
+      # Falha o build se a imagem tiver vulnerabilidade alta ou crítica com correção disponível.
+      - name: Scan da imagem (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ticketflow-${{ matrix.app }}:local
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Exportar imagem para o smoke test
+        run: docker save ticketflow-${{ matrix.app }}:local | gzip > image-${{ matrix.app }}.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: image-${{ matrix.app }}
+          path: image-${{ matrix.app }}.tar.gz
+          retention-days: 1
+
+  compose:
+    name: Smoke test do docker compose
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: image-*
+          merge-multiple: true
+
+      - name: Carregar imagens
+        run: for f in image-*.tar.gz; do gunzip -c "$f" | docker load; done
+
+      # --wait só retorna quando todos os healthchecks estão saudáveis.
+      - name: Subir infra e apps
+        run: docker compose --profile app up -d --no-build --wait --wait-timeout 180
+
+      - name: Verificar endpoints
+        run: |
+          curl --fail --silent --show-error http://localhost:3000/health/live
+          curl --fail --silent --show-error --output /dev/null http://localhost:3001/
+          docker compose --profile app ps
+
+      - name: Logs em caso de falha
+        if: failure()
+        run: docker compose --profile app logs --no-color
+
+      - name: Derrubar
+        if: always()
+        run: docker compose --profile app down -v
+
+  security:
+    name: Segredos e vulnerabilidades
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # o gitleaks varre o histórico inteiro
+
+      - name: Segredos (gitleaks)
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dependências e configuração (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'

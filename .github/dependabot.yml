@@ -1,0 +1,28 @@
+# Atualização automática de dependências. Atualizações menores e de patch chegam agrupadas
+# num PR semanal por ecossistema; majors vêm em PRs separados, para revisão individual.
+version: 2
+updates:
+  - package-ecosystem: npm # cobre o pnpm (lê o pnpm-lock.yaml)
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories:
+      - /apps/api
+      - /apps/worker
+      - /apps/web
+    schedule:
+      interval: weekly

@@ -1,0 +1,9 @@
+# Configuração do gitleaks: regras padrão + exceção para placeholders documentados.
+# Só valores exatos de exemplo entram aqui; nunca libere padrões genéricos.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders de desenvolvimento do .env.example e da documentação"
+regexes = ['''^troque-isto-por-um-segredo-com-32-caracteres-ou-mais$''']

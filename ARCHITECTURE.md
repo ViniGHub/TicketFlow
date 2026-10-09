@@ -75,17 +75,17 @@ código de domínio; nenhuma regra é duplicada.
 Todos os valores monetários em **centavos** (inteiro). Datas gravadas em UTC
 (`timestamptz`); exibição no fuso do evento.
 
-| Tabela | Campos principais |
-|---|---|
-| `users` | id, email (unique), password_hash, name, roles (`BUYER`, `ORGANIZER`; array, um usuário pode ter os dois), created_at |
-| `refresh_tokens` | id, user_id → users, token_hash (unique), expires_at, revoked_at (nullable), replaced_by (nullable) |
-| `events` | id, organizer_id → users, title, description, venue, **timezone** (IANA, ex. `America/Sao_Paulo`), starts_at, status (`DRAFT` \| `PUBLISHED` \| `CANCELLED`), cancelled_at, created_at |
-| `ticket_types` | id, event_id → events, name, price_cents, total, available, sales_start, sales_end, max_per_order. **CHECK (available >= 0 AND available <= total)**, **CHECK (price_cents >= 0)** |
-| `orders` | id, user_id → users, status, total_cents, currency (`BRL`), idempotency_key (nullable), request_hash (nullable), stripe_session_id (unique, nullable), stripe_payment_intent_id (nullable), expires_at, paid_at, created_at, updated_at. **UNIQUE (user_id, idempotency_key)** |
-| `order_items` | id, order_id → orders, ticket_type_id → ticket_types, quantity (CHECK > 0), unit_price_cents |
-| `tickets` | id, order_id → orders, ticket_type_id, **event_id** → events (desnormalizado para o check-in), qr_token (unique, aleatório), emailed_at (nullable), checked_in_at (nullable), voided_at (nullable) |
-| `stripe_events` | event_id (PK, id do evento Stripe), type, processed_at |
-| `outbox` | id, type (ex. `send-ticket-email`), payload (jsonb), created_at, published_at (nullable), attempts |
+| Tabela           | Campos principais                                                                                                                                                                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `users`          | id, email (unique), password_hash, name, roles (`BUYER`, `ORGANIZER`; array, um usuário pode ter os dois), created_at                                                                                                                                                          |
+| `refresh_tokens` | id, user_id → users, token_hash (unique), expires_at, revoked_at (nullable), replaced_by (nullable)                                                                                                                                                                            |
+| `events`         | id, organizer_id → users, title, description, venue, **timezone** (IANA, ex. `America/Sao_Paulo`), starts_at, status (`DRAFT` \| `PUBLISHED` \| `CANCELLED`), cancelled_at, created_at                                                                                         |
+| `ticket_types`   | id, event_id → events, name, price_cents, total, available, sales_start, sales_end, max_per_order. **CHECK (available >= 0 AND available <= total)**, **CHECK (price_cents >= 0)**                                                                                             |
+| `orders`         | id, user_id → users, status, total_cents, currency (`BRL`), idempotency_key (nullable), request_hash (nullable), stripe_session_id (unique, nullable), stripe_payment_intent_id (nullable), expires_at, paid_at, created_at, updated_at. **UNIQUE (user_id, idempotency_key)** |
+| `order_items`    | id, order_id → orders, ticket_type_id → ticket_types, quantity (CHECK > 0), unit_price_cents                                                                                                                                                                                   |
+| `tickets`        | id, order_id → orders, ticket_type_id, **event_id** → events (desnormalizado para o check-in), qr_token (unique, aleatório), emailed_at (nullable), checked_in_at (nullable), voided_at (nullable)                                                                             |
+| `stripe_events`  | event_id (PK, id do evento Stripe), type, processed_at                                                                                                                                                                                                                         |
+| `outbox`         | id, type (ex. `send-ticket-email`), payload (jsonb), created_at, published_at (nullable), attempts                                                                                                                                                                             |
 
 Índices:
 
@@ -109,18 +109,18 @@ PENDING ──pago (cartão)─────────────────�
    └──cancelado pelo usuário──────────────────────▶ CANCELLED
 ```
 
-| De | Para | Gatilho |
-|---|---|---|
-| `PENDING` | `PAID` | `checkout.session.completed` com `payment_status = paid` |
-| `PENDING` | `PROCESSING` | `checkout.session.completed` com `payment_status = unpaid` (Pix) |
-| `PROCESSING` | `PAID` | `checkout.session.async_payment_succeeded` |
-| `PROCESSING` | `EXPIRED` | `checkout.session.async_payment_failed` (devolve estoque) |
-| `PENDING` | `EXPIRED` | job de expiração ou `checkout.session.expired` (devolve estoque) |
-| `PENDING` | `CANCELLED` | usuário cancela (expira a sessão no Stripe e devolve estoque) |
-| `EXPIRED` | `PAID` | pagamento tardio e o estoque ainda existe (re-reserva) |
-| `EXPIRED` | `REFUND_PENDING` | pagamento tardio sem estoque (reembolso automático) |
-| `PAID` | `REFUND_PENDING` | reembolso solicitado (organizador ou evento cancelado) |
-| `REFUND_PENDING` | `REFUNDED` | `charge.refunded` (tickets ficam com `voided_at`) |
+| De               | Para             | Gatilho                                                          |
+| ---------------- | ---------------- | ---------------------------------------------------------------- |
+| `PENDING`        | `PAID`           | `checkout.session.completed` com `payment_status = paid`         |
+| `PENDING`        | `PROCESSING`     | `checkout.session.completed` com `payment_status = unpaid` (Pix) |
+| `PROCESSING`     | `PAID`           | `checkout.session.async_payment_succeeded`                       |
+| `PROCESSING`     | `EXPIRED`        | `checkout.session.async_payment_failed` (devolve estoque)        |
+| `PENDING`        | `EXPIRED`        | job de expiração ou `checkout.session.expired` (devolve estoque) |
+| `PENDING`        | `CANCELLED`      | usuário cancela (expira a sessão no Stripe e devolve estoque)    |
+| `EXPIRED`        | `PAID`           | pagamento tardio e o estoque ainda existe (re-reserva)           |
+| `EXPIRED`        | `REFUND_PENDING` | pagamento tardio sem estoque (reembolso automático)              |
+| `PAID`           | `REFUND_PENDING` | reembolso solicitado (organizador ou evento cancelado)           |
+| `REFUND_PENDING` | `REFUNDED`       | `charge.refunded` (tickets ficam com `voided_at`)                |
 
 A máquina de estados vive em `packages/domain`. Transições fora desta tabela lançam
 `InvalidOrderTransitionError`. Toda transição acontece dentro de uma transação e é testada.
@@ -236,20 +236,20 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
   BullMQ. Ele grava uma linha em `outbox` na mesma transação da mudança de negócio. O
   **relay** (no worker) lê linhas com `published_at IS NULL` (`FOR UPDATE SKIP LOCKED`),
   publica no BullMQ com **`jobId = outbox.id`** (o BullMQ ignora jobId duplicado) e marca
-  `published_at`. Garantia resultante: *at-least-once*; por isso os jobs são idempotentes.
+  `published_at`. Garantia resultante: _at-least-once_; por isso os jobs são idempotentes.
 - **Jobs**: podem rodar mais de uma vez sem efeito colateral. O e-mail só é enviado para
   tickets com `emailed_at IS NULL`, e `emailed_at` é gravado logo após o envio.
 
 ## 8. Jobs (BullMQ, no worker)
 
-| Fila / job | Gatilho | O que faz |
-|---|---|---|
-| `outbox-relay` | loop contínuo (~1 s) | publica linhas pendentes da `outbox` no BullMQ |
-| `send-ticket-email` | outbox (pedido virou `PAID`) | gera QR code (PNG) de cada ticket e envia e-mail |
-| `refund-order` | outbox (pagamento tardio sem estoque, evento cancelado, reembolso manual) | chama `stripe.refunds.create` com chave de idempotência |
-| `expire-orders` | repetível, 1/min | expira sessões no Stripe e depois os pedidos (seção 5, passo 6) |
-| `reconcile-stripe` | repetível, a cada 15 min | recupera webhooks perdidos (seção 5, passo 7) |
-| `send-reminder` (extra) | 24h antes do evento | lembrete para compradores |
+| Fila / job              | Gatilho                                                                   | O que faz                                                       |
+| ----------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `outbox-relay`          | loop contínuo (~1 s)                                                      | publica linhas pendentes da `outbox` no BullMQ                  |
+| `send-ticket-email`     | outbox (pedido virou `PAID`)                                              | gera QR code (PNG) de cada ticket e envia e-mail                |
+| `refund-order`          | outbox (pagamento tardio sem estoque, evento cancelado, reembolso manual) | chama `stripe.refunds.create` com chave de idempotência         |
+| `expire-orders`         | repetível, 1/min                                                          | expira sessões no Stripe e depois os pedidos (seção 5, passo 6) |
+| `reconcile-stripe`      | repetível, a cada 15 min                                                  | recupera webhooks perdidos (seção 5, passo 7)                   |
+| `send-reminder` (extra) | 24h antes do evento                                                       | lembrete para compradores                                       |
 
 - Tentativas com backoff exponencial. Ao esgotar, o job fica em `failed` (a "dead-letter"
   do BullMQ) e gera log `error`. Job repetível usa `jobId` fixo, então múltiplas instâncias
@@ -260,23 +260,23 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
 
 ## 9. API (resumo)
 
-| Método | Rota | Auth | Descrição |
-|---|---|---|---|
-| POST | `/auth/register`, `/auth/login` | pública | cadastro e login (define cookies) |
-| POST | `/auth/refresh`, `/auth/logout` | cookie de refresh | rotação e revogação do refresh token |
-| GET | `/me` | autenticado | dados e papéis do usuário |
-| GET | `/events`, `/events/:id` | pública | lista e detalha eventos publicados |
-| POST/PATCH/DELETE | `/events`, `/events/:id` | ORGANIZER (dono) | gerencia eventos próprios |
-| POST | `/events/:id/publish`, `/events/:id/cancel` | ORGANIZER (dono) | publica / cancela (seção 5) |
-| POST/PATCH | `/events/:id/ticket-types` | ORGANIZER (dono) | gerencia lotes |
-| POST | `/orders` | BUYER | cria pedido e sessão de checkout |
-| GET | `/orders/:id` | dono | status do pedido |
-| POST | `/orders/:id/cancel` | dono | cancela pedido `PENDING` |
-| GET | `/me/tickets` | BUYER | ingressos comprados |
-| POST | `/webhooks/stripe` | assinatura Stripe | recebe eventos do Stripe |
-| POST | `/events/:id/check-in` | ORGANIZER (dono) | valida QR e marca check-in (uma vez só) |
-| GET | `/events/:id/sales` | ORGANIZER (dono) | métricas de vendas |
-| GET | `/health/live`, `/health/ready` | pública | liveness / readiness (banco e Redis) |
+| Método            | Rota                                        | Auth              | Descrição                               |
+| ----------------- | ------------------------------------------- | ----------------- | --------------------------------------- |
+| POST              | `/auth/register`, `/auth/login`             | pública           | cadastro e login (define cookies)       |
+| POST              | `/auth/refresh`, `/auth/logout`             | cookie de refresh | rotação e revogação do refresh token    |
+| GET               | `/me`                                       | autenticado       | dados e papéis do usuário               |
+| GET               | `/events`, `/events/:id`                    | pública           | lista e detalha eventos publicados      |
+| POST/PATCH/DELETE | `/events`, `/events/:id`                    | ORGANIZER (dono)  | gerencia eventos próprios               |
+| POST              | `/events/:id/publish`, `/events/:id/cancel` | ORGANIZER (dono)  | publica / cancela (seção 5)             |
+| POST/PATCH        | `/events/:id/ticket-types`                  | ORGANIZER (dono)  | gerencia lotes                          |
+| POST              | `/orders`                                   | BUYER             | cria pedido e sessão de checkout        |
+| GET               | `/orders/:id`                               | dono              | status do pedido                        |
+| POST              | `/orders/:id/cancel`                        | dono              | cancela pedido `PENDING`                |
+| GET               | `/me/tickets`                               | BUYER             | ingressos comprados                     |
+| POST              | `/webhooks/stripe`                          | assinatura Stripe | recebe eventos do Stripe                |
+| POST              | `/events/:id/check-in`                      | ORGANIZER (dono)  | valida QR e marca check-in (uma vez só) |
+| GET               | `/events/:id/sales`                         | ORGANIZER (dono)  | métricas de vendas                      |
+| GET               | `/health/live`, `/health/ready`             | pública           | liveness / readiness (banco e Redis)    |
 
 Documentação OpenAPI/Swagger em `/docs`; o JSON em `/docs-json` alimenta a geração de tipos
 do front-end.
@@ -313,12 +313,20 @@ WHERE qr_token = :token AND event_id = :eventId
 
 ## 11. Variáveis de ambiente
 
+O arquivo de referência é o `.env.example` da raiz. Em dev, api e worker carregam o `.env`
+da raiz no boot e validam as variáveis com zod (`apps/*/src/config/env.ts`); cada app exige
+só as variáveis que usa.
+
 ```
+NODE_ENV=development
+LOG_LEVEL=info
+
 # API / Worker
+API_PORT=3000
 DATABASE_URL=postgresql://ticketflow:ticketflow@localhost:5432/ticketflow
 DIRECT_URL=postgresql://ticketflow:ticketflow@localhost:5432/ticketflow  # migrations (sem pooler)
 REDIS_URL=redis://localhost:6379
-JWT_SECRET=troque-isto
+JWT_SECRET=troque-isto-por-um-segredo-com-32-caracteres-ou-mais   # mínimo 32 caracteres
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 RESERVATION_TTL_MINUTES=30
@@ -328,7 +336,6 @@ SMTP_PORT=1025
 EMAIL_FROM=ingressos@ticketflow.local
 RESEND_API_KEY=            # produção (opcional)
 OTEL_EXPORTER_OTLP_ENDPOINT=   # opcional
-LOG_LEVEL=info
 
 # Web
 API_URL=http://localhost:3000   # destino dos rewrites /api/* (server-side, não exposto ao browser)

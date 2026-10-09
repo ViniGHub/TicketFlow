@@ -59,7 +59,7 @@ Se algum comando não existir ainda, crie-o em vez de contornar.
    com resposta 200; erro no processamento faz rollback e responde 5xx (o Stripe reenvia).
 7. **Nunca enfileirar direto no BullMQ a partir de uma transação de negócio.** Grave na
    tabela `outbox` na mesma transação; o relay do worker publica (`jobId = outbox.id`).
-   Todo job é idempotente (entrega *at-least-once*).
+   Todo job é idempotente (entrega _at-least-once_).
 8. **Nenhuma chamada HTTP externa (Stripe, e-mail) dentro de transação de banco.** Chamadas
    que criam algo no Stripe usam `idempotencyKey` derivada do pedido.
 9. **Regras de negócio ficam em `packages/domain`**, nunca duplicadas entre api e worker.

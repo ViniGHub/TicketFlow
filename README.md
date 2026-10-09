@@ -34,17 +34,17 @@ Vender ingresso parece simples até surgirem os problemas reais. Este projeto re
 
 Veja o diagrama completo e o fluxo de pagamento em [ARCHITECTURE.md](ARCHITECTURE.md).
 
-| Camada | Tecnologia |
-|---|---|
-| Front-end | Next.js, TypeScript, Tailwind |
-| API | NestJS, TypeScript, OpenAPI |
-| Worker | NestJS standalone + BullMQ + Redis (transactional outbox) |
-| Banco | PostgreSQL + Prisma |
-| Pagamento | Stripe Checkout (modo teste) |
-| E-mail | Mailpit (dev) / Resend (prod) |
-| Monorepo | pnpm workspaces + Turborepo |
-| Testes | Vitest, Testcontainers, Playwright |
-| Infra | Docker, GitHub Actions, GHCR, OpenTelemetry |
+| Camada    | Tecnologia                                                |
+| --------- | --------------------------------------------------------- |
+| Front-end | Next.js, TypeScript, Tailwind                             |
+| API       | NestJS, TypeScript, OpenAPI                               |
+| Worker    | NestJS standalone + BullMQ + Redis (transactional outbox) |
+| Banco     | PostgreSQL + Prisma                                       |
+| Pagamento | Stripe Checkout (modo teste)                              |
+| E-mail    | Mailpit (dev) / Resend (prod)                             |
+| Monorepo  | pnpm workspaces + Turborepo                               |
+| Testes    | Vitest, Testcontainers, Playwright                        |
+| Infra     | Docker, GitHub Actions, GHCR, OpenTelemetry               |
 
 ## Como rodar localmente
 

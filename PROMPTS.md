@@ -52,6 +52,7 @@ Feche a etapa X.Y do ROADMAP.md:
 ## Prompts avulsos úteis
 
 **Revisão de código antes do PR**
+
 ```
 Faça uma revisão crítica do diff desta branch como um engenheiro sênior. Procure bugs,
 race conditions, falhas de autorização, falta de validação, N+1 queries, chamadas externas
@@ -60,6 +61,7 @@ Liste por severidade, com arquivo e linha.
 ```
 
 **Quando um teste está instável**
+
 ```
 O teste X falha de forma intermitente. Não aumente timeouts nem adicione retries como
 solução. Investigue a causa raiz (ordem de execução, estado compartilhado, race
@@ -67,12 +69,14 @@ condition) e proponha a correção.
 ```
 
 **Para estudar o que foi gerado**
+
 ```
 Explique o código desta pasta como se eu fosse apresentá-lo numa entrevista: qual problema
 resolve, por que foi feito assim, quais alternativas existiam e quais são os trade-offs.
 ```
 
 **Segurança** (usado na etapa 7.3)
+
 ```
 Audite o projeto contra o OWASP Top 10: autenticação, autorização por recurso, injeção,
 exposição de dados, configuração de CORS/Helmet/cookies, validação do webhook e tratamento
@@ -80,6 +84,7 @@ de segredos. Liste achados e corrija os de baixo risco.
 ```
 
 **Nova funcionalidade da fase 9**
+
 ```
 Leia CLAUDE.md, ARCHITECTURE.md e a fase 9 do ROADMAP.md. Quero implementar <item>.
 Escreva primeiro a etapa no formato do ROADMAP (branch, dependências, escopo, testes

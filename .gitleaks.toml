@@ -5,5 +5,9 @@
 useDefault = true
 
 [allowlist]
-description = "Placeholders de desenvolvimento do .env.example e da documentação"
-regexes = ['''^troque-isto-por-um-segredo-com-32-caracteres-ou-mais$''']
+description = "Placeholders do .env.example e da documentação, e segredos fixos dos testes"
+regexes = [
+  '''^troque-isto-por-um-segredo-com-32-caracteres-ou-mais$''',
+  # JWT_SECRET dos testes de integração da API (apps/api/test/app.ts).
+  '''^segredo-de-teste-com-mais-de-32-caracteres$''',
+]

@@ -34,6 +34,10 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 
 # ---- runtime: só o necessário para rodar, como usuário não-root ----
 FROM ${NODE_IMAGE} AS runtime
+# O runtime só usa o `node`. npm, npx e corepack vêm na imagem base com dependências
+# próprias (o Trivy aponta CVEs nelas) e não têm uso aqui.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 ENV NODE_ENV=production \
     API_PORT=3000
 WORKDIR /app

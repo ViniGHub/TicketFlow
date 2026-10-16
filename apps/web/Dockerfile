@@ -31,6 +31,10 @@ RUN pnpm turbo run build --filter=@ticketflow/web
 
 # ---- runtime: o servidor standalone do Next já traz só as dependências usadas ----
 FROM ${NODE_IMAGE} AS runtime
+# O runtime só usa o `node`. npm, npx e corepack vêm na imagem base com dependências
+# próprias (o Trivy aponta CVEs nelas) e não têm uso aqui.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3001 \

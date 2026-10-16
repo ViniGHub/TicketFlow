@@ -11,7 +11,10 @@ describe('GET /health/live', () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    // O Prisma só conecta na primeira consulta: a URL não precisa apontar para um banco real.
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule.register({ databaseUrl: 'postgresql://user:pass@localhost:5432/test' })],
+    }).compile();
     // Adapter importado estaticamente: sem isso o Nest carrega o Express sob demanda dentro
     // deste hook, e o carregamento a frio estoura o timeout com a máquina sob carga.
     app = moduleRef.createNestApplication(new ExpressAdapter(), { logger: false });

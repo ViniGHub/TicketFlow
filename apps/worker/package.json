@@ -17,6 +17,7 @@
   "dependencies": {
     "@nestjs/common": "^12.1.3",
     "@nestjs/core": "^12.1.3",
+    "@ticketflow/db": "workspace:*",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "zod": "^4.6.7"

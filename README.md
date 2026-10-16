@@ -57,8 +57,26 @@ cp .env.example .env          # preencha as chaves de teste do Stripe
 docker compose up -d          # postgres, redis, mailpit
 pnpm install
 pnpm --filter @ticketflow/db prisma migrate dev
+pnpm turbo run build --filter=@ticketflow/db && pnpm --filter @ticketflow/db db:seed
 pnpm dev                      # web, api e worker
 ```
+
+Para recriar o banco do zero: `pnpm --filter @ticketflow/db prisma migrate reset` e depois o
+seed de novo (o Prisma 7 não roda o seed automaticamente no reset).
+
+### Usuários do seed
+
+O seed é idempotente: pode rodar várias vezes sem duplicar dados. Todos os usuários usam a
+senha `ticketflow-dev` (só para desenvolvimento local).
+
+| E-mail                         | Papéis                  |
+| ------------------------------ | ----------------------- |
+| `organizador@ticketflow.local` | organizador             |
+| `comprador@ticketflow.local`   | comprador               |
+| `ambos@ticketflow.local`       | comprador e organizador |
+
+Ele também cria dois eventos publicados, com lotes e janela de vendas aberta: "Jazz no Parque"
+(do organizador) e "Workshop de TypeScript" (do usuário com os dois papéis, com só 10 vagas).
 
 Em outro terminal, encaminhe os webhooks do Stripe para a API local:
 

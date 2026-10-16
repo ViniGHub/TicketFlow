@@ -37,6 +37,7 @@ escopo de etapas seguintes.
 pnpm install
 docker compose up -d postgres redis mailpit   # infraestrutura local
 pnpm --filter @ticketflow/db prisma migrate dev
+pnpm --filter @ticketflow/db db:seed          # dados de dev (compile o pacote db antes)
 pnpm dev                                      # sobe web + api + worker
 pnpm lint
 pnpm typecheck

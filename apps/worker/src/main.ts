@@ -19,6 +19,7 @@ async function bootstrap(): Promise<void> {
   const logger = createLogger(env.LOG_LEVEL);
   const app = await NestFactory.createApplicationContext(
     WorkerModule.register({
+      databaseUrl: env.DATABASE_URL,
       heartbeat: { file: env.WORKER_HEARTBEAT_FILE, intervalMs: HEARTBEAT_INTERVAL_MS },
     }),
     { logger },

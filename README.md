@@ -7,7 +7,7 @@
 Stripe Checkout · reserva de estoque atômica · webhooks idempotentes · transactional outbox
 
 [![CI](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml)
-![Progresso do MVP](https://img.shields.io/badge/MVP-3%20de%2023%20etapas-orange)
+![Progresso do MVP](https://img.shields.io/badge/MVP-4%20de%2023%20etapas-orange)
 ![Node](https://img.shields.io/badge/Node-24_LTS-5FA04E?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 
@@ -28,7 +28,7 @@ Stripe Checkout · reserva de estoque atômica · webhooks idempotentes · trans
 > [!NOTE]
 > **Projeto de portfólio em construção.** O foco é qualidade de engenharia (concorrência,
 > idempotência, webhooks, CI/CD), não quantidade de funcionalidades. A fundação está pronta
-> (monorepo, CI, banco); autenticação, pedidos e pagamentos vêm nas próximas etapas.
+> (monorepo, CI, banco e autenticação); catálogo, pedidos e pagamentos vêm nas próximas etapas.
 
 > [!IMPORTANT]
 > O Stripe roda em **modo teste**: nenhuma cobrança real é feita. Para pagar, use o cartão
@@ -137,19 +137,19 @@ ticketflow/
 
 ## 🗺️ Progresso
 
-| Fase                        | Objetivo                                  | Status                           |
-| --------------------------- | ----------------------------------------- | -------------------------------- |
-| 1. Fundação                 | Monorepo, CI, banco e autenticação        | 🟡 3 de 4 (falta a autenticação) |
-| 2. Catálogo                 | Eventos e lotes                           | ⬜ a fazer                       |
-| 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ⬜ a fazer                       |
-| 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ⬜ a fazer                       |
-| 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⬜ a fazer                       |
-| 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer                       |
-| 7. Produção                 | Observabilidade, deploy e segurança       | ⬜ a fazer                       |
-| 8. Portfólio                | Documentação e material de entrevista     | ⬜ a fazer                       |
+| Fase                        | Objetivo                                  | Status       |
+| --------------------------- | ----------------------------------------- | ------------ |
+| 1. Fundação                 | Monorepo, CI, banco e autenticação        | ✅ concluída |
+| 2. Catálogo                 | Eventos e lotes                           | ⏳ próxima   |
+| 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ⬜ a fazer   |
+| 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ⬜ a fazer   |
+| 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⬜ a fazer   |
+| 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer   |
+| 7. Produção                 | Observabilidade, deploy e segurança       | ⬜ a fazer   |
+| 8. Portfólio                | Documentação e material de entrevista     | ⬜ a fazer   |
 
 <details>
-<summary><b>O que já está pronto na fase 1</b></summary>
+<summary><b>O que foi entregue na fase 1</b></summary>
 
 - ✅ **1.1 Bootstrap:** monorepo, TypeScript estrito, ESLint, Prettier, Vitest, validação de
   variáveis de ambiente com zod, commits no padrão Conventional Commits.
@@ -157,7 +157,8 @@ ticketflow/
   Testcontainers e pipeline de CI completo.
 - ✅ **1.3 Banco:** schema completo, CHECKs de estoque, índices parciais e seed de
   desenvolvimento.
-- ⏳ **1.4 Autenticação:** cookies httpOnly, refresh token rotacionado, rate limit.
+- ✅ **1.4 Autenticação:** cookies httpOnly, refresh token rotacionado com detecção de reuso,
+  rate limit em Redis, Swagger, health checks e logs com request id.
 
 </details>
 
@@ -180,11 +181,11 @@ pnpm turbo run build --filter=@ticketflow/db && pnpm --filter @ticketflow/db db:
 pnpm dev                      # web, api e worker
 ```
 
-| Serviço            | Endereço                          |
-| ------------------ | --------------------------------- |
-| 🌐 Front-end       | http://localhost:3001             |
-| ⚙️ API (health)    | http://localhost:3000/health/live |
-| 📬 Caixa de e-mail | http://localhost:8025             |
+| Serviço            | Endereço                   |
+| ------------------ | -------------------------- |
+| 🌐 Front-end       | http://localhost:3001      |
+| ⚙️ API + Swagger   | http://localhost:3000/docs |
+| 📬 Caixa de e-mail | http://localhost:8025      |
 
 <details>
 <summary><b>👥 Usuários do seed</b></summary>
@@ -259,17 +260,18 @@ As dependências são atualizadas pelo Dependabot.
 
 ## 🧠 Decisões técnicas
 
-| Decisão                                         | Por quê                                                                                                                        |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| **Webhook como fonte da verdade**               | O redirect de sucesso só mostra o status; quem confirma o pagamento é o webhook assinado                                       |
-| **Estoque atômico**                             | `UPDATE ... WHERE available >= qty` em transação, com `CHECK` como segunda defesa                                              |
-| **Idempotência de webhook**                     | `event.id` com `UNIQUE` na mesma transação; se algo falhar, tudo volta e o Stripe reenvia                                      |
-| **Transactional outbox**                        | Jobs nascem de uma tabela gravada junto com a mudança de negócio                                                               |
-| **Expirar no Stripe antes de devolver estoque** | Uma sessão expirada não pode ser paga: quase elimina o pagamento tardio                                                        |
-| **Stripe Checkout hospedado**                   | Dados de cartão nunca passam pelo servidor                                                                                     |
-| **Sessão em cookie httpOnly via BFF**           | O front faz proxy de `/api/*`, então o cookie é first-party                                                                    |
-| **Monorepo com pnpm + Turborepo**               | Regras de domínio compartilhadas entre API e worker, sem duplicação ([ADR 0001](docs/adr/0001-monorepo-pnpm-turborepo.md))     |
-| **UUID v7 e índices parciais no schema**        | IDs ordenáveis e não sequenciais; índices que o Prisma não remove ([ADR 0002](docs/adr/0002-convencoes-do-modelo-de-dados.md)) |
+| Decisão                                         | Por quê                                                                                                                                                            |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Webhook como fonte da verdade**               | O redirect de sucesso só mostra o status; quem confirma o pagamento é o webhook assinado                                                                           |
+| **Estoque atômico**                             | `UPDATE ... WHERE available >= qty` em transação, com `CHECK` como segunda defesa                                                                                  |
+| **Idempotência de webhook**                     | `event.id` com `UNIQUE` na mesma transação; se algo falhar, tudo volta e o Stripe reenvia                                                                          |
+| **Transactional outbox**                        | Jobs nascem de uma tabela gravada junto com a mudança de negócio                                                                                                   |
+| **Expirar no Stripe antes de devolver estoque** | Uma sessão expirada não pode ser paga: quase elimina o pagamento tardio                                                                                            |
+| **Stripe Checkout hospedado**                   | Dados de cartão nunca passam pelo servidor                                                                                                                         |
+| **Sessão em cookie httpOnly via BFF**           | O front faz proxy de `/api/*`, então o cookie é first-party                                                                                                        |
+| **Refresh token rotacionado**                   | Reuso de um token já trocado revoga a sessão inteira: um token roubado vale no máximo uma vez ([ADR 0003](docs/adr/0003-sessao-em-cookie-e-rotacao-de-refresh.md)) |
+| **Monorepo com pnpm + Turborepo**               | Regras de domínio compartilhadas entre API e worker, sem duplicação ([ADR 0001](docs/adr/0001-monorepo-pnpm-turborepo.md))                                         |
+| **UUID v7 e índices parciais no schema**        | IDs ordenáveis e não sequenciais; índices que o Prisma não remove ([ADR 0002](docs/adr/0002-convencoes-do-modelo-de-dados.md))                                     |
 
 ## 🔮 Depois do MVP
 

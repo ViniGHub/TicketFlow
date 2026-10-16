@@ -303,16 +303,24 @@ WHERE qr_token = :token AND event_id = :eventId
 
 ## 10. Segurança
 
-- Senhas com **argon2id**.
-- **Sessão em cookies httpOnly**: access token JWT curto (15 min) e refresh token opaco
-  (7 dias, guardado como hash em `refresh_tokens`, rotacionado a cada uso; reuso de token
-  revogado revoga a família inteira). `Secure`, `SameSite=Lax`.
+- Senhas com **argon2id** (`node:crypto`, formato PHC). Login de e-mail inexistente também
+  calcula um hash, para o tempo de resposta não revelar quais e-mails existem.
+- **Sessão em cookies httpOnly**: access token JWT HS256 curto (15 min, cookie `tf_access`)
+  e refresh token opaco (7 dias, cookie `tf_refresh` restrito a `REFRESH_COOKIE_PATH`,
+  guardado como SHA-256 em `refresh_tokens`, rotacionado a cada uso numa transação com
+  `FOR UPDATE`; reuso de token revogado revoga a família inteira). `Secure`, `SameSite=Lax`.
+  Detalhes em [ADR 0003](docs/adr/0003-sessao-em-cookie-e-rotacao-de-refresh.md).
 - **Front e API no mesmo site**: o Next.js expõe `/api/*` via `rewrites` para a API (BFF).
   O navegador só fala com o domínio do front, então o cookie é first-party e não depende de
   cookies de terceiros. Alternativa: domínio próprio com `app.` e `api.` no mesmo domínio.
-- Proteção CSRF: `SameSite=Lax` + checagem de `Origin` nas rotas que alteram estado.
+- Proteção CSRF: `SameSite=Lax` + checagem de `Origin` nas rotas que alteram estado (aceita
+  o `APP_URL` e, fora de produção, a origem da própria API para o Swagger; sem `Origin` passa,
+  `Origin: null` é recusado).
 - Rate limiting com `@nestjs/throttler` usando **storage em Redis** (vale para várias
-  instâncias) em `/auth/*` e `/orders`.
+  instâncias) em `/auth/*` (login: 5/min por IP) e `/orders`. Com o Redis fora, essas rotas
+  respondem 503 em vez de liberar tentativas.
+- Logs JSON com `request_id` (reaproveita o `x-request-id` recebido); cookies e o header
+  `Authorization` são mascarados.
 - CORS restrito ao domínio do front. Helmet ativado.
 - Autorização por recurso (organizador só mexe nos próprios eventos; comprador só vê os
   próprios pedidos). Recurso de outro dono → `404` (não revela existência).
@@ -345,6 +353,8 @@ SMTP_PORT=1025
 EMAIL_FROM=ingressos@ticketflow.local
 RESEND_API_KEY=            # produção (opcional)
 OTEL_EXPORTER_OTLP_ENDPOINT=   # opcional
+TRUST_PROXY=false              # true atrás de proxy reverso (IP real do cliente no rate limit)
+REFRESH_COOKIE_PATH=/auth      # caminho do cookie de refresh; /api/auth atrás do BFF
 
 # Web
 API_URL=http://localhost:3000   # destino dos rewrites /api/* (server-side, não exposto ao browser)
@@ -390,6 +400,7 @@ Registrados:
 
 1. `0001-monorepo-pnpm-turborepo.md`
 2. `0002-convencoes-do-modelo-de-dados.md`: UUID v7, índices parciais no schema, `family_id`
+3. `0003-sessao-em-cookie-e-rotacao-de-refresh.md`: cookies, rotação, argon2, CSRF, rate limit
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

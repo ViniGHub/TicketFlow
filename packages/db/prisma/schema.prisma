@@ -1,16 +1,216 @@
-// Schema do TicketFlow. O modelo completo (ARCHITECTURE.md, seção 3) entra na etapa 1.3.
+// Schema do TicketFlow (ARCHITECTURE.md, seção 3).
+//
+// Convenções:
+// - Tabelas e colunas em snake_case (@@map/@map); models e campos em camelCase.
+// - IDs em UUID v7 (ordenáveis no tempo, não sequenciais). Exceção: stripe_events, cuja
+//   chave é o id do evento no Stripe.
+// - Dinheiro em centavos (Int). Datas em timestamptz (UTC).
+// - CHECK constraints não existem no Prisma: ficam em SQL manual na migration.
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "esm"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  moduleFormat    = "esm"
+  // Índices parciais declarados aqui, e não em SQL manual: o Prisma não conhece índices
+  // criados à mão e geraria um DROP INDEX no próximo `migrate dev`.
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
   provider = "postgresql"
 }
 
-// Placeholder para o client ser gerado; substituído na etapa 1.3.
-model Placeholder {
-  id Int @id @default(autoincrement())
+enum Role {
+  BUYER
+  ORGANIZER
+
+  @@map("role")
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+
+  @@map("event_status")
+}
+
+/// Estados do pedido (ARCHITECTURE.md, seção 4). As transições vivem em packages/domain.
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  PAID
+  EXPIRED
+  CANCELLED
+  REFUND_PENDING
+  REFUNDED
+
+  @@map("order_status")
+}
+
+model User {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  /// Um usuário pode ter os dois papéis.
+  roles        Role[]
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  refreshTokens RefreshToken[]
+  events        Event[]
+  orders        Order[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  /// Todos os tokens de uma mesma cadeia de rotação. Reuso de token revogado revoga a
+  /// família inteira com um único UPDATE.
+  familyId     String    @map("family_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  replacedById String?   @unique @map("replaced_by") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("RefreshTokenRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces   RefreshToken? @relation("RefreshTokenRotation")
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+model Event {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  organizerId String      @map("organizer_id") @db.Uuid
+  title       String
+  description String
+  venue       String
+  /// Fuso IANA (ex.: America/Sao_Paulo), usado para exibir as datas.
+  timezone    String
+  startsAt    DateTime    @map("starts_at") @db.Timestamptz(3)
+  status      EventStatus @default(DRAFT)
+  cancelledAt DateTime?   @map("cancelled_at") @db.Timestamptz(3)
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organizer   User         @relation(fields: [organizerId], references: [id], onDelete: Restrict)
+  ticketTypes TicketType[]
+  tickets     Ticket[]
+
+  @@index([status, startsAt])
+  @@index([organizerId])
+  @@map("events")
+}
+
+/// Lote de ingressos. CHECKs (SQL manual): 0 <= available <= total e price_cents >= 0.
+model TicketType {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  eventId     String   @map("event_id") @db.Uuid
+  name        String
+  priceCents  Int      @map("price_cents")
+  total       Int
+  available   Int
+  salesStart  DateTime @map("sales_start") @db.Timestamptz(3)
+  salesEnd    DateTime @map("sales_end") @db.Timestamptz(3)
+  maxPerOrder Int      @map("max_per_order")
+
+  event      Event       @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  orderItems OrderItem[]
+  tickets    Ticket[]
+
+  @@index([eventId])
+  @@map("ticket_types")
+}
+
+model Order {
+  id                    String      @id @default(uuid(7)) @db.Uuid
+  userId                String      @map("user_id") @db.Uuid
+  status                OrderStatus @default(PENDING)
+  totalCents            Int         @map("total_cents")
+  currency              String      @default("BRL") @db.Char(3)
+  /// Header Idempotency-Key. NULL não conflita no UNIQUE (vários pedidos sem chave).
+  idempotencyKey        String?     @map("idempotency_key")
+  /// SHA-256 do corpo normalizado, para detectar mesma chave com corpo diferente.
+  requestHash           String?     @map("request_hash")
+  stripeSessionId       String?     @unique @map("stripe_session_id")
+  stripePaymentIntentId String?     @map("stripe_payment_intent_id")
+  expiresAt             DateTime    @map("expires_at") @db.Timestamptz(3)
+  paidAt                DateTime?   @map("paid_at") @db.Timestamptz(3)
+  createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items   OrderItem[]
+  tickets Ticket[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  // Job de expiração: só pedidos PENDING interessam.
+  @@index([expiresAt], map: "orders_expires_at_pending_idx", where: raw("status = 'PENDING'"))
+  @@map("orders")
+}
+
+/// CHECK (SQL manual): quantity > 0. Um lote aparece no máximo uma vez por pedido.
+model OrderItem {
+  id             String @id @default(uuid(7)) @db.Uuid
+  orderId        String @map("order_id") @db.Uuid
+  ticketTypeId   String @map("ticket_type_id") @db.Uuid
+  quantity       Int
+  /// Preço copiado do lote no momento da compra.
+  unitPriceCents Int    @map("unit_price_cents")
+
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, ticketTypeId])
+  @@index([ticketTypeId])
+  @@map("order_items")
+}
+
+model Ticket {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  orderId      String    @map("order_id") @db.Uuid
+  ticketTypeId String    @map("ticket_type_id") @db.Uuid
+  /// Desnormalizado para o check-in atômico (ARCHITECTURE.md, seção 9).
+  eventId      String    @map("event_id") @db.Uuid
+  /// 32 bytes aleatórios em base64url.
+  qrToken      String    @unique @map("qr_token")
+  emailedAt    DateTime? @map("emailed_at") @db.Timestamptz(3)
+  checkedInAt  DateTime? @map("checked_in_at") @db.Timestamptz(3)
+  voidedAt     DateTime? @map("voided_at") @db.Timestamptz(3)
+
+  order      Order      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id], onDelete: Restrict)
+  event      Event      @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@map("tickets")
+}
+
+/// Eventos do Stripe já processados. Gravado na mesma transação do processamento.
+model StripeEvent {
+  eventId     String   @id @map("event_id")
+  type        String
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(3)
+
+  @@map("stripe_events")
+}
+
+/// Transactional outbox (ARCHITECTURE.md, seção 7). O relay publica com jobId = id.
+model Outbox {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  type        String
+  payload     Json      @db.JsonB
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(3)
+  attempts    Int       @default(0)
+
+  // Relay: só linhas ainda não publicadas.
+  @@index([createdAt], map: "outbox_created_at_unpublished_idx", where: raw("published_at IS NULL"))
+  @@map("outbox")
 }

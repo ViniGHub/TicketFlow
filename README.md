@@ -48,15 +48,15 @@ Vender ingresso parece simples até surgirem os problemas reais:
 ## 🏗️ Arquitetura
 
 ```mermaid
-flowchart LR
-    U(["👤 Usuário"]) --> W["🌐 Web<br/>Next.js + BFF /api"]
-    W -->|"REST, cookie first-party"| A["⚙️ API<br/>NestJS"]
-    A -->|"uma transação"| P[("🐘 PostgreSQL<br/>pedidos, outbox,<br/>stripe_events")]
+flowchart TB
+    U(["👤 Usuário"]) --> W["🌐 Web · Next.js<br/>BFF /api"]
+    W -->|"REST, cookie first-party"| A["⚙️ API · NestJS"]
     A -->|"cria Checkout Session"| S["💳 Stripe Checkout"]
-    S -->|"webhook assinado"| A
-    K["🔧 Worker<br/>NestJS + BullMQ"] -->|"relay da outbox<br/>SKIP LOCKED"| P
-    K <--> R[("🟥 Redis")]
-    K -->|"expire, refund,<br/>retrieve"| S
+    S -.->|"webhook assinado"| A
+    A -->|"uma transação:<br/>negócio + outbox"| P[("🐘 PostgreSQL<br/>fonte da verdade")]
+    K["🔧 Worker · NestJS + BullMQ"] -->|"relay da outbox"| P
+    K <-->|"filas"| R[("🟥 Redis")]
+    K -->|"expire, refund"| S
     K -->|"e-mail com QR code"| M["📬 Mailpit / Resend"]
 ```
 
@@ -91,7 +91,6 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    direction LR
     [*] --> PENDING
     PENDING --> PAID: pago com cartão
     PENDING --> PROCESSING: pagamento assíncrono (Pix)

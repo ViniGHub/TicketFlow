@@ -1,0 +1,11 @@
+{
+  "extends": "@ticketflow/config/tsconfig/nextjs.json",
+  "include": [
+    "next-env.d.ts",
+    "src",
+    "*.config.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

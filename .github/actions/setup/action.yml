@@ -1,0 +1,25 @@
+name: Setup
+description: Node (versão do .nvmrc), pnpm (versão do packageManager), dependências e cache do Turborepo.
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+
+    # Cache local do Turborepo: tasks sem mudança nos inputs são restauradas em vez de rodar.
+    - uses: actions/cache@v6
+      with:
+        path: .turbo/cache
+        key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+        restore-keys: turbo-${{ runner.os }}-${{ github.job }}-
+
+    - name: Instalar dependências
+      shell: bash
+      run: pnpm install --frozen-lockfile
+      env:
+        HUSKY: '0'

@@ -1,0 +1,4 @@
+{
+  "extends": "@ticketflow/config/tsconfig/nest.json",
+  "include": ["src", "*.config.mts"]
+}

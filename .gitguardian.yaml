@@ -1,0 +1,8 @@
+# Configuração do GitGuardian (app do GitHub e ggshield).
+# Mesma exceção do .gitleaks.toml: só valores exatos de exemplo; nunca padrões genéricos.
+version: 2
+
+secret:
+  ignored_matches:
+    - name: Placeholder do JWT_SECRET no .env.example e na documentação
+      match: troque-isto-por-um-segredo-com-32-caracteres-ou-mais

@@ -1,0 +1,118 @@
+# Infra local do TicketFlow.
+#
+#   docker compose up -d                       -> postgres, redis e mailpit (desenvolvimento)
+#   docker compose --profile app up --build    -> também api, worker e web em containers
+#
+# O compose lê o .env da raiz para interpolar ${...}; os padrões abaixo servem para subir
+# sem .env (ex.: no CI). Nada aqui é segredo de produção.
+
+name: ticketflow
+
+x-app-env: &app-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: postgresql://ticketflow:ticketflow@postgres:5432/ticketflow
+  REDIS_URL: redis://redis:6379
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_dummy}
+  APP_URL: http://localhost:3001
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ticketflow
+      POSTGRES_PASSWORD: ticketflow
+      POSTGRES_DB: ticketflow
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ticketflow -d ticketflow']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    # AOF: a fila sobrevive a reinícios. O BullMQ exige maxmemory-policy noeviction,
+    # que é o padrão do Redis.
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.31
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # interface web
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: ticketflow-api:local
+    environment:
+      <<: *app-env
+      API_PORT: 3000
+      DIRECT_URL: postgresql://ticketflow:ticketflow@postgres:5432/ticketflow
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-com-pelo-menos-32-caracteres}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_dummy}
+      RESERVATION_TTL_MINUTES: ${RESERVATION_TTL_MINUTES:-30}
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    image: ticketflow-worker:local
+    environment:
+      <<: *app-env
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      EMAIL_FROM: ${EMAIL_FROM:-ingressos@ticketflow.local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+
+  web:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: ticketflow-web:local
+    environment:
+      API_URL: http://api:3000
+    ports:
+      - '3001:3001'
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:

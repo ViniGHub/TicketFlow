@@ -26,6 +26,7 @@ escopo de etapas seguintes.
 - `packages/domain`: regras de negócio puras (máquina de estados, reserva, expiração)
 - `packages/contracts`: schemas zod e tipos compartilhados (DTOs, payloads de jobs)
 - `packages/config`: tsconfig, ESLint (flat config), Prettier, preset do Vitest
+- `packages/testing`: helpers de teste (Testcontainers, limpeza de estado entre testes)
 - PostgreSQL 17, Redis 8, Mailpit (e-mail local), Stripe (modo teste)
 - Testes: **Vitest** (com `unplugin-swc` no NestJS) + **Testcontainers** na integração;
   Playwright (e2e, opcional)
@@ -59,7 +60,7 @@ Se algum comando não existir ainda, crie-o em vez de contornar.
    com resposta 200; erro no processamento faz rollback e responde 5xx (o Stripe reenvia).
 7. **Nunca enfileirar direto no BullMQ a partir de uma transação de negócio.** Grave na
    tabela `outbox` na mesma transação; o relay do worker publica (`jobId = outbox.id`).
-   Todo job é idempotente (entrega *at-least-once*).
+   Todo job é idempotente (entrega _at-least-once_).
 8. **Nenhuma chamada HTTP externa (Stripe, e-mail) dentro de transação de banco.** Chamadas
    que criam algo no Stripe usam `idempotencyKey` derivada do pedido.
 9. **Regras de negócio ficam em `packages/domain`**, nunca duplicadas entre api e worker.

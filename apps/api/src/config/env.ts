@@ -15,6 +15,10 @@ export const apiEnvSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_'),
   RESERVATION_TTL_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
   APP_URL: z.url(),
+  /** `true` atrás de um proxy reverso: o IP do cliente (rate limit, logs) vem do X-Forwarded-For. */
+  TRUST_PROXY: z.stringbool().default(false),
+  /** Caminho do cookie de refresh como o navegador vê a API: `/api/auth` atrás do BFF. */
+  REFRESH_COOKIE_PATH: z.string().startsWith('/').default('/auth'),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

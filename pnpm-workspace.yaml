@@ -2,6 +2,8 @@ packages:
   - apps/*
   - packages/*
 allowBuilds:
+  # Telemetria do swagger-ui-dist (via @nestjs/swagger): não precisa rodar.
+  '@scarf/scarf': false
   '@prisma/engines': true
   '@swc/core': true
   cpu-features: false

@@ -75,16 +75,18 @@ código de domínio; nenhuma regra é duplicada.
 ## 3. Modelo de dados
 
 Todos os valores monetários em **centavos** (inteiro). Datas gravadas em UTC
-(`timestamptz`); exibição no fuso do evento.
+(`timestamptz`); exibição no fuso do evento. IDs em **UUID v7** (ordenáveis no tempo e não
+sequenciais), exceto `stripe_events`, cuja chave é o id do evento no Stripe. O schema fica em
+`packages/db/prisma/schema.prisma` ([ADR 0002](docs/adr/0002-convencoes-do-modelo-de-dados.md)).
 
 | Tabela           | Campos principais                                                                                                                                                                                                                                                              |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `users`          | id, email (unique), password_hash, name, roles (`BUYER`, `ORGANIZER`; array, um usuário pode ter os dois), created_at                                                                                                                                                          |
-| `refresh_tokens` | id, user_id → users, token_hash (unique), expires_at, revoked_at (nullable), replaced_by (nullable)                                                                                                                                                                            |
+| `refresh_tokens` | id, user_id → users, **family_id** (todos os tokens da mesma cadeia de rotação), token_hash (unique), expires_at, revoked_at (nullable), replaced_by → refresh_tokens (unique, nullable), created_at                                                                           |
 | `events`         | id, organizer_id → users, title, description, venue, **timezone** (IANA, ex. `America/Sao_Paulo`), starts_at, status (`DRAFT` \| `PUBLISHED` \| `CANCELLED`), cancelled_at, created_at                                                                                         |
 | `ticket_types`   | id, event_id → events, name, price_cents, total, available, sales_start, sales_end, max_per_order. **CHECK (available >= 0 AND available <= total)**, **CHECK (price_cents >= 0)**                                                                                             |
 | `orders`         | id, user_id → users, status, total_cents, currency (`BRL`), idempotency_key (nullable), request_hash (nullable), stripe_session_id (unique, nullable), stripe_payment_intent_id (nullable), expires_at, paid_at, created_at, updated_at. **UNIQUE (user_id, idempotency_key)** |
-| `order_items`    | id, order_id → orders, ticket_type_id → ticket_types, quantity (CHECK > 0), unit_price_cents                                                                                                                                                                                   |
+| `order_items`    | id, order_id → orders, ticket_type_id → ticket_types, quantity (CHECK > 0), unit_price_cents. **UNIQUE (order_id, ticket_type_id)**                                                                                                                                            |
 | `tickets`        | id, order_id → orders, ticket_type_id, **event_id** → events (desnormalizado para o check-in), qr_token (unique, aleatório), emailed_at (nullable), checked_in_at (nullable), voided_at (nullable)                                                                             |
 | `stripe_events`  | event_id (PK, id do evento Stripe), type, processed_at                                                                                                                                                                                                                         |
 | `outbox`         | id, type (ex. `send-ticket-email`), payload (jsonb), created_at, published_at (nullable), attempts                                                                                                                                                                             |
@@ -96,6 +98,11 @@ Todos os valores monetários em **centavos** (inteiro). Datas gravadas em UTC
 - `tickets(qr_token)` (unique), `tickets(order_id)`
 - `events(status, starts_at)`
 - `outbox(created_at) WHERE published_at IS NULL`
+
+Os índices parciais são declarados no próprio `schema.prisma` (preview `partialIndexes`):
+criados à mão, o Prisma não os conheceria e o próximo `migrate dev` geraria um `DROP INDEX`.
+Os CHECKs entram como SQL manual na migration, porque o Prisma não os gera nem os
+introspecta. Um teste de integração confere que as migrations não divergem do schema.
 
 ## 4. Estados do pedido
 
@@ -377,12 +384,18 @@ decorators do NestJS).
 - Postgres gerenciado (Neon, Supabase, Railway). Com pooler (PgBouncer), `DATABASE_URL`
   aponta para o pooler e `DIRECT_URL` para a conexão direta.
 
-## 15. ADRs sugeridos (`docs/adr/`)
+## 15. ADRs (`docs/adr/`)
+
+Registrados:
 
 1. `0001-monorepo-pnpm-turborepo.md`
-2. `0002-stripe-checkout-hospedado.md`: por que não coletar cartão no próprio site
-3. `0003-webhook-como-fonte-da-verdade.md`
-4. `0004-controle-de-estoque-atomico.md`
-5. `0005-fila-bullmq-para-jobs-assincronos.md`
-6. `0006-transactional-outbox.md`: por que não enfileirar direto (alternativa avaliada: pg-boss)
-7. `0007-sessao-em-cookie-com-bff.md`: cookies first-party via rewrites do Next.js
+2. `0002-convencoes-do-modelo-de-dados.md`: UUID v7, índices parciais no schema, `family_id`
+
+Sugeridos (recebem o próximo número livre quando forem escritos):
+
+- `stripe-checkout-hospedado`: por que não coletar cartão no próprio site
+- `webhook-como-fonte-da-verdade`
+- `controle-de-estoque-atomico`
+- `fila-bullmq-para-jobs-assincronos`
+- `transactional-outbox`: por que não enfileirar direto (alternativa avaliada: pg-boss)
+- `sessao-em-cookie-com-bff`: cookies first-party via rewrites do Next.js

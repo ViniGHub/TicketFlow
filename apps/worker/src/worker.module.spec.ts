@@ -24,7 +24,11 @@ describe('WorkerModule', () => {
 
   it('sobe gravando o heartbeat e, ao encerrar, para o timer e remove o arquivo', async () => {
     const app = await NestFactory.createApplicationContext(
-      WorkerModule.register({ heartbeat: { file, intervalMs: 60_000 } }),
+      WorkerModule.register({
+        // O Prisma só conecta na primeira consulta: a URL não precisa apontar para um banco real.
+        databaseUrl: 'postgresql://user:pass@localhost:5432/test',
+        heartbeat: { file, intervalMs: 60_000 },
+      }),
       { logger: false },
     );
     const heartbeat = app.get(HeartbeatService);

@@ -15,7 +15,9 @@ async function bootstrap(): Promise<void> {
   }
 
   const env = parseApiEnv(process.env);
-  const app = await NestFactory.create(AppModule, { logger: createLogger(env.LOG_LEVEL) });
+  const app = await NestFactory.create(AppModule.register({ databaseUrl: env.DATABASE_URL }), {
+    logger: createLogger(env.LOG_LEVEL),
+  });
   app.enableShutdownHooks();
 
   await app.listen(env.API_PORT);

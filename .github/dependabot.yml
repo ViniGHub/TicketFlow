@@ -10,6 +10,13 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # O typescript-eslint ainda não suporta o TypeScript 7 (ADR 0001). Remover quando suportar.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      # Os tipos acompanham o runtime (Node 24 LTS); sobem junto com a troca de versão do Node.
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
@@ -26,3 +33,7 @@ updates:
       - /apps/web
     schedule:
       interval: weekly
+    ignore:
+      # A imagem base fica no Node 24 LTS (engines e .nvmrc); trocar de major é decisão manual.
+      - dependency-name: node
+        update-types: [version-update:semver-major]

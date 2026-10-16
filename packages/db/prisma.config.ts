@@ -11,7 +11,8 @@ if (existsSync(rootEnv)) {
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
-  migrations: { path: 'prisma/migrations' },
+  // `prisma db seed` roda o seed compilado (rode `pnpm --filter @ticketflow/db build` antes).
+  migrations: { path: 'prisma/migrations', seed: 'node dist/seed/run.js' },
   // Migrations usam a conexão direta (sem pooler); o client em runtime usa DATABASE_URL.
   datasource: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? '' },
 });

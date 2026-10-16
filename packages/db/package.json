@@ -20,7 +20,8 @@
     "lint": "eslint .",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
-    "prisma": "prisma"
+    "prisma": "prisma",
+    "db:seed": "node dist/seed/run.js"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",

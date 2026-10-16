@@ -20,6 +20,11 @@ describe('parseApiEnv', () => {
     expect(env.NODE_ENV).toBe('development');
   });
 
+  it('lê TRUST_PROXY como booleano, desligado por padrão', () => {
+    expect(parseApiEnv(validEnv).TRUST_PROXY).toBe(false);
+    expect(parseApiEnv({ ...validEnv, TRUST_PROXY: 'true' }).TRUST_PROXY).toBe(true);
+  });
+
   it('converte números vindos como texto', () => {
     expect(parseApiEnv({ ...validEnv, API_PORT: '4000' }).API_PORT).toBe(4000);
   });

@@ -2,6 +2,8 @@ import { EventStatus, type PrismaClient, Role } from '../generated/prisma/client
 
 import { DEV_PASSWORD, hashPasswordForSeed } from './dev-password.js';
 
+export { DEV_PASSWORD, hashPasswordForSeed };
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 

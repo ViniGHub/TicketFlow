@@ -1,11 +1,8 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { NestFactory } from '@nestjs/core';
-
-import { AppModule } from './app.module';
+import { createApp } from './app.factory';
 import { parseApiEnv } from './config/env';
-import { createLogger } from './config/logger';
 
 async function bootstrap(): Promise<void> {
   // Em dev, carrega o .env da raiz do monorepo. Em produção as variáveis vêm do ambiente.
@@ -15,11 +12,7 @@ async function bootstrap(): Promise<void> {
   }
 
   const env = parseApiEnv(process.env);
-  const app = await NestFactory.create(AppModule.register({ databaseUrl: env.DATABASE_URL }), {
-    logger: createLogger(env.LOG_LEVEL),
-  });
-  app.enableShutdownHooks();
-
+  const app = await createApp(env);
   await app.listen(env.API_PORT);
 }
 

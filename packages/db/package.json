@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./seed": {
+      "types": "./dist/seed/seed.d.ts",
+      "default": "./dist/seed/seed.js"
     }
   },
   "files": [

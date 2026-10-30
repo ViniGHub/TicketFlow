@@ -21,14 +21,14 @@
     "*.{ts,tsx,js,mjs,cjs,json,md,css,yml,yaml}": "prettier --write"
   },
   "devDependencies": {
-    "@commitlint/cli": "^21.2.3",
-    "@commitlint/config-conventional": "^21.2.3",
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "@ticketflow/config": "workspace:*",
     "@types/node": "^24.19.2",
     "husky": "^9.1.7",
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.10",
-    "turbo": "^2.11.8",
+    "turbo": "^2.11.10",
     "typescript": "~6.0.3"
   }
 }

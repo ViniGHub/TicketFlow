@@ -17,12 +17,13 @@
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --project unit",
+    "test": "vitest run --project unit --coverage",
     "test:integration": "vitest run --project integration"
   },
   "devDependencies": {
     "@ticketflow/config": "workspace:*",
     "@types/node": "^24.19.2",
+    "@vitest/coverage-v8": "^5.0.4",
     "eslint": "^10.12.0",
     "typescript": "~6.0.3",
     "vitest": "^5.0.4"

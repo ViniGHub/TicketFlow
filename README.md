@@ -7,7 +7,7 @@
 Stripe Checkout · reserva de estoque atômica · webhooks idempotentes · transactional outbox
 
 [![CI](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml)
-![Progresso do MVP](https://img.shields.io/badge/MVP-5%20de%2023%20etapas-orange)
+![Progresso do MVP](https://img.shields.io/badge/MVP-6%20de%2023%20etapas-orange)
 ![Node](https://img.shields.io/badge/Node-24_LTS-5FA04E?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 
@@ -138,16 +138,16 @@ ticketflow/
 
 ## 🗺️ Progresso
 
-| Fase                        | Objetivo                                  | Status       |
-| --------------------------- | ----------------------------------------- | ------------ |
-| 1. Fundação                 | Monorepo, CI, banco e autenticação        | ✅ concluída |
-| 2. Catálogo                 | Eventos e lotes                           | ✅ concluída |
-| 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ⏳ próxima   |
-| 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ⬜ a fazer   |
-| 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⬜ a fazer   |
-| 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer   |
-| 7. Produção                 | Observabilidade, deploy e segurança       | ⬜ a fazer   |
-| 8. Portfólio                | Documentação e material de entrevista     | ⬜ a fazer   |
+| Fase                        | Objetivo                                  | Status          |
+| --------------------------- | ----------------------------------------- | --------------- |
+| 1. Fundação                 | Monorepo, CI, banco e autenticação        | ✅ concluída    |
+| 2. Catálogo                 | Eventos e lotes                           | ✅ concluída    |
+| 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ⏳ em andamento |
+| 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ⬜ a fazer      |
+| 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⬜ a fazer      |
+| 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer      |
+| 7. Produção                 | Observabilidade, deploy e segurança       | ⬜ a fazer      |
+| 8. Portfólio                | Documentação e material de entrevista     | ⬜ a fazer      |
 
 <details>
 <summary><b>O que foi entregue na fase 1</b></summary>
@@ -169,6 +169,15 @@ ticketflow/
 - ✅ **2.1 Eventos e lotes:** catálogo público paginado por cursor, gestão de eventos e lotes
   pelo organizador dono (404 para evento alheio), regras de janela de vendas e de total
   abaixo do vendido em `packages/domain`, e escritas serializadas pela trava do evento.
+
+</details>
+
+<details>
+<summary><b>O que já foi entregue na fase 3</b></summary>
+
+- ✅ **3.1 Domínio do pedido:** máquina de estados testada nos 49 pares origem × destino, com
+  cobertura de 100% exigida no CI, efeito de cada transição no estoque, erros e total do
+  pedido em centavos, e portas de repositório, transação e pagamento sem implementação.
 
 </details>
 
@@ -283,6 +292,7 @@ As dependências são atualizadas pelo Dependabot.
 | **Monorepo com pnpm + Turborepo**               | Regras de domínio compartilhadas entre API e worker, sem duplicação ([ADR 0001](docs/adr/0001-monorepo-pnpm-turborepo.md))                                         |
 | **UUID v7 e índices parciais no schema**        | IDs ordenáveis e não sequenciais; índices que o Prisma não remove ([ADR 0002](docs/adr/0002-convencoes-do-modelo-de-dados.md))                                     |
 | **Paginação por cursor no catálogo**            | Não pula nem repete eventos durante a navegação e dispensa `COUNT(*)`; escritas travam o evento ([ADR 0004](docs/adr/0004-catalogo-cursor-e-trava-do-evento.md))   |
+| **Máquina de estados do pedido como tabela**    | Cada par origem → destino diz se vale e o que faz com o estoque; API, worker e webhook usam a mesma regra ([ADR 0005](docs/adr/0005-dominio-do-pedido.md))         |
 
 ## 🔮 Depois do MVP
 

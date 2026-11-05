@@ -1,12 +1,18 @@
 import { type Prisma } from '@ticketflow/db';
-import { type EventStatus, type SalesWindow, type Stock } from '@ticketflow/domain';
+import {
+  type EventStatus,
+  type SalesWindow,
+  type Stock,
+  TicketTypeNotFoundError,
+} from '@ticketflow/domain';
 
-import { EventNotFoundError, TicketTypeNotFoundError } from './events.errors';
+import { EventNotFoundError } from './events.errors';
 
 // Toda escrita no catálogo começa travando o evento (FOR UPDATE) dentro da transação. Sem a
 // trava, mover a data do evento e mudar o fim das vendas de um lote ao mesmo tempo passariam
 // nas duas validações e deixariam o lote vendendo depois do início do evento. Ordem das
-// travas: evento, depois lote; a reserva de estoque (etapa 3.2) só trava o lote.
+// travas: evento, depois lote. A compra trava o evento em modo compartilhado (FOR SHARE) e
+// depois o lote, então espera estas escritas e é esperada por elas (ADR 0006).
 
 export interface LockedEvent {
   id: string;

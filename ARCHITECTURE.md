@@ -228,6 +228,10 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
 
 - Com vários itens no mesmo pedido, processar em **ordem determinística** (por id) para
   evitar deadlocks.
+- Antes de ler os lotes, a compra trava os eventos deles em modo compartilhado
+  (`FOR SHARE`, em ordem de id). Compras não esperam umas pelas outras, mas esperam as
+  escritas do organizador, que usam `FOR UPDATE`: o evento não é cancelado nem a janela de
+  vendas muda no meio de uma compra ([ADR 0006](docs/adr/0006-criacao-de-pedido.md)).
 - A constraint `CHECK (available >= 0 AND available <= total)` é a segunda linha de defesa.
   O Prisma não gera CHECK: ela entra como SQL manual na migration.
 - Devolução de estoque usa `increment` e só acontece junto com a transição de estado do
@@ -241,8 +245,10 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
   processamento (seção 5).
 - **Criação de pedido**: header opcional `Idempotency-Key`, gravado em
   `orders(user_id, idempotency_key)` com UNIQUE e um `request_hash` (SHA-256 do corpo
-  normalizado). Mesma chave e mesmo corpo → devolve o pedido existente. Mesma chave e corpo
-  diferente → `422`.
+  normalizado). Mesma chave e mesmo corpo → devolve o pedido existente (201, com o header
+  `Idempotent-Replayed: true`). Mesma chave e corpo diferente → `422`. Se duas requisições
+  com a mesma chave correm juntas, a que perde (no `UNIQUE` ou por falta de estoque) consulta
+  a chave de novo depois do rollback e devolve o pedido da outra.
 - **Chamadas ao Stripe**: toda chamada que cria algo usa `idempotencyKey` derivada do
   pedido (`order.id`, `refund:<order.id>`).
 - **Outbox (transactional outbox)**: nenhum código de API ou webhook enfileira direto no
@@ -307,6 +313,14 @@ do front-end.
   o estado (total abaixo do vendido, publicar sem lote, evento cancelado, excluir publicado)
   → 409.
 
+**Pedidos** ([ADR 0006](docs/adr/0006-criacao-de-pedido.md)):
+
+- `POST /orders` recebe de 1 a 10 lotes sem repetição e responde 201 com o pedido `PENDING`
+  (até a etapa 4.1, sem `checkoutUrl`). Sem estoque, vendas fechadas ou evento fora de venda
+  → 409; acima de `max_per_order`, total grande demais ou `Idempotency-Key` com outro corpo
+  → 422; lote inexistente → 404.
+- Rate limit de 20 pedidos por minuto por usuário.
+
 **Check-in** é atômico:
 
 ```sql
@@ -334,7 +348,8 @@ WHERE qr_token = :token AND event_id = :eventId
   o `APP_URL` e, fora de produção, a origem da própria API para o Swagger; sem `Origin` passa,
   `Origin: null` é recusado).
 - Rate limiting com `@nestjs/throttler` usando **storage em Redis** (vale para várias
-  instâncias) em `/auth/*` (login: 5/min por IP) e `/orders`. Com o Redis fora, essas rotas
+  instâncias) em `/auth/*` (login: 5/min por IP) e `/orders` (20/min por usuário, para
+  compradores na mesma rede não dividirem o limite). Com o Redis fora, essas rotas
   respondem 503 em vez de liberar tentativas.
 - Logs JSON com `request_id` (reaproveita o `x-request-id` recebido); cookies e o header
   `Authorization` são mascarados.
@@ -422,6 +437,8 @@ Registrados:
    escritas, 400/409/422 no catálogo
 5. `0005-dominio-do-pedido.md`: transições por tabela com efeito no estoque, limite do total,
    portas com unidade de trabalho
+6. `0006-criacao-de-pedido.md`: caso de uso no domínio, `FOR SHARE` no evento, idempotência
+   sob concorrência, rate limit por usuário
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

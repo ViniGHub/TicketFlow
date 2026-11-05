@@ -1,9 +1,13 @@
 // Helpers dos testes de integração da API: sobem a aplicação real (createApp) numa porta
 // livre, apontando para o Postgres e o Redis do Testcontainers.
+import { JwtService } from '@nestjs/jwt';
 import { type NestExpressApplication } from '@nestjs/platform-express';
+import { type Role } from '@ticketflow/contracts';
 import { inject } from 'vitest';
 
 import { createApp } from '../src/app.factory';
+import { type AccessTokenPayload } from '../src/auth/auth.service';
+import { ACCESS_COOKIE, ACCESS_TOKEN_TTL_SECONDS } from '../src/auth/session';
 import { type ApiEnv, parseApiEnv } from '../src/config/env';
 
 export const FRONT_ORIGIN = 'http://localhost:3001';
@@ -81,6 +85,25 @@ export async function login(baseUrl: string, email: string, password: string): P
   if (response.status !== 200) {
     throw new Error(`Login de ${email} falhou com status ${response.status}`);
   }
+  return jar;
+}
+
+/**
+ * Sessão de um usuário que já existe no banco, sem passar pelo login (5/min por IP): assina
+ * o access token como a API assina. Para testes com dezenas de usuários.
+ */
+export async function sessionFor(
+  userId: string,
+  roles: Role[],
+  env: ApiEnv = testEnv(),
+): Promise<CookieJar> {
+  const payload: AccessTokenPayload = { sub: userId, roles };
+  const token = await new JwtService({ secret: env.JWT_SECRET }).signAsync(payload, {
+    algorithm: 'HS256',
+    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+  });
+  const jar = new CookieJar();
+  jar.set(ACCESS_COOKIE, token);
   return jar;
 }
 

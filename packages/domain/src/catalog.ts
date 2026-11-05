@@ -17,6 +17,14 @@ export interface Stock {
   available: number;
 }
 
+export class TicketTypeNotFoundError extends DomainError {
+  readonly code = 'TICKET_TYPE_NOT_FOUND';
+
+  constructor(readonly ticketTypeId?: string) {
+    super('Lote não encontrado.');
+  }
+}
+
 export class InvalidSalesWindowError extends DomainError {
   readonly code = 'INVALID_SALES_WINDOW';
 }

@@ -1,3 +1,4 @@
+import type { EventStatus } from './catalog.js';
 import type { Cents } from './money.js';
 import type { NewOrder, Order } from './order.js';
 import type { OrderStatus } from './order-status.js';
@@ -16,9 +17,43 @@ export interface UnitOfWork {
 }
 
 export interface TransactionalRepositories {
+  catalog: CatalogRepository;
   orders: OrderRepository;
   inventory: InventoryRepository;
   outbox: OutboxRepository;
+}
+
+/** Lote como a compra precisa dele: preço, janela de vendas, limite e o evento. */
+export interface PurchasableTicketType {
+  id: string;
+  priceCents: Cents;
+  salesStart: Date;
+  salesEnd: Date;
+  maxPerOrder: number;
+  event: { id: string; status: EventStatus };
+}
+
+export interface CatalogRepository {
+  /**
+   * Lotes de uma compra, com o evento de cada um. Antes de ler os lotes, trava os eventos em
+   * modo compartilhado (`FOR SHARE`, em ordem de id): compras não esperam umas pelas outras,
+   * mas esperam as escritas do organizador (`FOR UPDATE`) e são esperadas por elas, então o
+   * evento não é cancelado nem a janela muda no meio da compra (ADR 0006). Lote inexistente
+   * fica fora do resultado.
+   */
+  lockForPurchase(ticketTypeIds: readonly string[]): Promise<PurchasableTicketType[]>;
+}
+
+/**
+ * O usuário já tem um pedido com esta `Idempotency-Key`: outra requisição com a mesma chave
+ * gravou primeiro. Sinal interno do `OrderRepository` para `placeOrder`, que tenta de novo e
+ * devolve o pedido existente; nunca chega ao cliente.
+ */
+export class IdempotencyKeyTakenError extends Error {
+  constructor() {
+    super('Este usuário já tem um pedido com esta Idempotency-Key.');
+    this.name = 'IdempotencyKeyTakenError';
+  }
 }
 
 /** Estoque dos lotes (ARCHITECTURE.md, seção 6). */
@@ -41,6 +76,7 @@ export interface OrderStatusChanges {
 }
 
 export interface OrderRepository {
+  /** Lança `IdempotencyKeyTakenError` se o usuário já tem pedido com a mesma chave. */
   create(order: NewOrder): Promise<Order>;
 
   findById(id: string): Promise<Order | null>;

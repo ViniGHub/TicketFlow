@@ -23,15 +23,22 @@ export class RequestValidationError extends Error {
   }
 }
 
-/** Valida e transforma a entrada com um schema zod de packages/contracts. */
+/**
+ * Valida e transforma a entrada com um schema zod de packages/contracts. `path` nomeia a
+ * entrada nos erros quando o Nest não informa (ex.: um header lido por decorator próprio).
+ */
 export class ZodValidationPipe<Schema extends z.ZodType> implements PipeTransform {
-  constructor(private readonly schema: Schema) {}
+  constructor(
+    private readonly schema: Schema,
+    private readonly path?: string,
+  ) {}
 
   transform(value: unknown, metadata?: ArgumentMetadata): z.output<Schema> {
     const result = this.schema.safeParse(value);
     if (!result.success) {
       // Num parâmetro de rota (`@Param('id')`), o caminho começa pelo nome do parâmetro.
-      const prefix = metadata?.type === 'param' && metadata.data ? [metadata.data] : [];
+      const name = this.path ?? (metadata?.type === 'param' ? metadata.data : undefined);
+      const prefix = name ? [name] : [];
       throw new RequestValidationError(
         result.error.issues.map((issue) => ({
           path: [...prefix, ...issue.path.map(String)].join('.'),

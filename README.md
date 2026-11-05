@@ -7,7 +7,7 @@
 Stripe Checkout · reserva de estoque atômica · webhooks idempotentes · transactional outbox
 
 [![CI](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml)
-![Progresso do MVP](https://img.shields.io/badge/MVP-6%20de%2023%20etapas-orange)
+![Progresso do MVP](https://img.shields.io/badge/MVP-7%20de%2023%20etapas-orange)
 ![Node](https://img.shields.io/badge/Node-24_LTS-5FA04E?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 
@@ -178,6 +178,10 @@ ticketflow/
 - ✅ **3.1 Domínio do pedido:** máquina de estados testada nos 49 pares origem × destino, com
   cobertura de 100% exigida no CI, efeito de cada transição no estoque, erros e total do
   pedido em centavos, e portas de repositório, transação e pagamento sem implementação.
+- ✅ **3.2 Reserva de estoque e criação de pedido:** `POST /orders` com decremento atômico em
+  ordem de lote, trava compartilhada do evento, `Idempotency-Key` resistente a requisições
+  simultâneas e rate limit por comprador. Testado com 50 compradores disputando 10 ingressos,
+  em 10 rodadas seguidas.
 
 </details>
 
@@ -293,6 +297,7 @@ As dependências são atualizadas pelo Dependabot.
 | **UUID v7 e índices parciais no schema**        | IDs ordenáveis e não sequenciais; índices que o Prisma não remove ([ADR 0002](docs/adr/0002-convencoes-do-modelo-de-dados.md))                                     |
 | **Paginação por cursor no catálogo**            | Não pula nem repete eventos durante a navegação e dispensa `COUNT(*)`; escritas travam o evento ([ADR 0004](docs/adr/0004-catalogo-cursor-e-trava-do-evento.md))   |
 | **Máquina de estados do pedido como tabela**    | Cada par origem → destino diz se vale e o que faz com o estoque; API, worker e webhook usam a mesma regra ([ADR 0005](docs/adr/0005-dominio-do-pedido.md))         |
+| **Compra trava o evento em modo compartilhado** | Compras não esperam umas pelas outras, mas um cancelamento de evento não passa no meio de uma compra ([ADR 0006](docs/adr/0006-criacao-de-pedido.md))              |
 
 ## 🔮 Depois do MVP
 

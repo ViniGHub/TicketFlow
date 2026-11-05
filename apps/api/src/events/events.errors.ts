@@ -1,7 +1,8 @@
 import { DomainError } from '@ticketflow/domain';
 
 // Status HTTP de cada código: common/error-status.ts. As regras do catálogo (janela de
-// vendas, total x vendido, publicação) ficam em packages/domain.
+// vendas, total x vendido, publicação) e o TicketTypeNotFoundError, que a compra também usa,
+// ficam em packages/domain.
 
 /** Também para evento de outro organizador: a resposta não revela que ele existe. */
 export class EventNotFoundError extends DomainError {
@@ -9,13 +10,5 @@ export class EventNotFoundError extends DomainError {
 
   constructor() {
     super('Evento não encontrado.');
-  }
-}
-
-export class TicketTypeNotFoundError extends DomainError {
-  readonly code = 'TICKET_TYPE_NOT_FOUND';
-
-  constructor() {
-    super('Lote não encontrado.');
   }
 }

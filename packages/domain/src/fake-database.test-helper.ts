@@ -3,11 +3,28 @@
 import { type EventStatus } from './catalog.js';
 import { type NewOrder, type Order } from './order.js';
 import {
+  type ExpireCheckoutSessionResult,
   IdempotencyKeyTakenError,
   type PurchasableTicketType,
+  type SessionExpirer,
   type TransactionalRepositories,
   type UnitOfWork,
 } from './ports.js';
+
+/** Expira sessões de mentira. Por padrão responde `expired`; erros são lançados. */
+export class FakeSessionExpirer implements SessionExpirer {
+  calls: string[] = [];
+  results = new Map<string, ExpireCheckoutSessionResult | Error>();
+  /** Roda a cada chamada (ex.: conferir o que já estava travado nesse momento). */
+  onCall?: (sessionId: string) => void;
+
+  expireCheckoutSession(sessionId: string): Promise<ExpireCheckoutSessionResult> {
+    this.calls.push(sessionId);
+    this.onCall?.(sessionId);
+    const result = this.results.get(sessionId) ?? 'expired';
+    return result instanceof Error ? Promise.reject(result) : Promise.resolve(result);
+  }
+}
 
 export const FAKE_NOW = new Date('2026-11-20T12:00:00Z');
 
@@ -69,6 +86,17 @@ export class FakeDatabase implements UnitOfWork {
     const stored = { ...order, ...overrides };
     this.orders.push(stored);
     return stored;
+  }
+
+  /**
+   * Outra transação, já confirmada, muda o pedido: altera o objeto no lugar, então a mudança
+   * sobrevive ao rollback desta (o snapshot guarda as mesmas referências).
+   */
+  commitElsewhere(id: string, change: Partial<Order>): void {
+    const order = this.orders.find((stored) => stored.id === id);
+    if (order) {
+      Object.assign(order, change);
+    }
   }
 
   available(id: string): number | undefined {

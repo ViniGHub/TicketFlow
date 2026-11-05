@@ -1,5 +1,7 @@
+export * from './cancel-order.js';
 export * from './catalog.js';
 export * from './domain-error.js';
+export * from './expiration.js';
 export * from './money.js';
 export * from './order.js';
 export * from './order-status.js';

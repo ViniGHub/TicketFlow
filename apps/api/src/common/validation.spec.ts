@@ -1,7 +1,12 @@
 import { registerRequestSchema } from '@ticketflow/contracts';
 import { describe, expect, it } from 'vitest';
 
-import { openApiSchema, RequestValidationError, ZodValidationPipe } from './validation';
+import {
+  openApiSchema,
+  RequestValidationError,
+  uuidParamPipe,
+  ZodValidationPipe,
+} from './validation';
 
 describe('ZodValidationPipe', () => {
   const pipe = new ZodValidationPipe(registerRequestSchema);
@@ -30,6 +35,14 @@ describe('ZodValidationPipe', () => {
     expect(issue?.path).toBe('password');
     expect(issue?.message).toMatch(/8/);
     expect(issue?.message).not.toMatch(/Too small/);
+  });
+
+  it('num parâmetro de rota, o caminho do erro é o nome do parâmetro', () => {
+    expect(() => uuidParamPipe.transform('123', { type: 'param', data: 'id' })).toThrow(
+      expect.objectContaining({ issues: [expect.objectContaining({ path: 'id' })] }),
+    );
+    const id = '019a0000-0000-7000-8000-000000000001';
+    expect(uuidParamPipe.transform(id, { type: 'param', data: 'id' })).toBe(id);
   });
 });
 

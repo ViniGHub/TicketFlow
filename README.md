@@ -7,7 +7,7 @@
 Stripe Checkout · reserva de estoque atômica · webhooks idempotentes · transactional outbox
 
 [![CI](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml)
-![Progresso do MVP](https://img.shields.io/badge/MVP-4%20de%2023%20etapas-orange)
+![Progresso do MVP](https://img.shields.io/badge/MVP-5%20de%2023%20etapas-orange)
 ![Node](https://img.shields.io/badge/Node-24_LTS-5FA04E?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 
@@ -27,8 +27,9 @@ Stripe Checkout · reserva de estoque atômica · webhooks idempotentes · trans
 
 > [!NOTE]
 > **Projeto de portfólio em construção.** O foco é qualidade de engenharia (concorrência,
-> idempotência, webhooks, CI/CD), não quantidade de funcionalidades. A fundação está pronta
-> (monorepo, CI, banco e autenticação); catálogo, pedidos e pagamentos vêm nas próximas etapas.
+> idempotência, webhooks, CI/CD), não quantidade de funcionalidades. A fundação (monorepo, CI,
+> banco e autenticação) e o catálogo de eventos estão prontos; pedidos e pagamentos vêm nas
+> próximas etapas.
 
 > [!IMPORTANT]
 > O Stripe roda em **modo teste**: nenhuma cobrança real é feita. Para pagar, use o cartão
@@ -140,8 +141,8 @@ ticketflow/
 | Fase                        | Objetivo                                  | Status       |
 | --------------------------- | ----------------------------------------- | ------------ |
 | 1. Fundação                 | Monorepo, CI, banco e autenticação        | ✅ concluída |
-| 2. Catálogo                 | Eventos e lotes                           | ⏳ próxima   |
-| 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ⬜ a fazer   |
+| 2. Catálogo                 | Eventos e lotes                           | ✅ concluída |
+| 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ⏳ próxima   |
 | 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ⬜ a fazer   |
 | 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⬜ a fazer   |
 | 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer   |
@@ -159,6 +160,15 @@ ticketflow/
   desenvolvimento.
 - ✅ **1.4 Autenticação:** cookies httpOnly, refresh token rotacionado com detecção de reuso,
   rate limit em Redis, Swagger, health checks e logs com request id.
+
+</details>
+
+<details>
+<summary><b>O que foi entregue na fase 2</b></summary>
+
+- ✅ **2.1 Eventos e lotes:** catálogo público paginado por cursor, gestão de eventos e lotes
+  pelo organizador dono (404 para evento alheio), regras de janela de vendas e de total
+  abaixo do vendido em `packages/domain`, e escritas serializadas pela trava do evento.
 
 </details>
 
@@ -272,6 +282,7 @@ As dependências são atualizadas pelo Dependabot.
 | **Refresh token rotacionado**                   | Reuso de um token já trocado revoga a sessão inteira: um token roubado vale no máximo uma vez ([ADR 0003](docs/adr/0003-sessao-em-cookie-e-rotacao-de-refresh.md)) |
 | **Monorepo com pnpm + Turborepo**               | Regras de domínio compartilhadas entre API e worker, sem duplicação ([ADR 0001](docs/adr/0001-monorepo-pnpm-turborepo.md))                                         |
 | **UUID v7 e índices parciais no schema**        | IDs ordenáveis e não sequenciais; índices que o Prisma não remove ([ADR 0002](docs/adr/0002-convencoes-do-modelo-de-dados.md))                                     |
+| **Paginação por cursor no catálogo**            | Não pula nem repete eventos durante a navegação e dispensa `COUNT(*)`; escritas travam o evento ([ADR 0004](docs/adr/0004-catalogo-cursor-e-trava-do-evento.md))   |
 
 ## 🔮 Depois do MVP
 

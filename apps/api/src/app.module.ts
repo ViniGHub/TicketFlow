@@ -10,6 +10,7 @@ import { type ApiEnv } from './config/env';
 import { EnvModule } from './config/env.module';
 import { loggerParams } from './config/logger';
 import { DatabaseModule } from './database/database.module';
+import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { REDIS, RedisModule } from './redis/redis.module';
 import { OriginGuard } from './security/origin.guard';
@@ -35,6 +36,7 @@ export class AppModule {
         }),
         HealthModule,
         AuthModule,
+        EventsModule,
       ],
       providers: [
         { provide: APP_FILTER, useClass: HttpExceptionFilter },

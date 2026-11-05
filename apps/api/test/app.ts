@@ -67,6 +67,23 @@ export class CookieJar {
   }
 }
 
+/**
+ * Loga um usuário já existente (ex.: do seed) e devolve o jar com a sessão. O login tem rate
+ * limit de 5/min por IP: zere o Redis entre os testes.
+ */
+export async function login(baseUrl: string, email: string, password: string): Promise<CookieJar> {
+  const jar = new CookieJar();
+  const response = await call(baseUrl, '/auth/login', {
+    method: 'POST',
+    body: { email, password },
+    jar,
+  });
+  if (response.status !== 200) {
+    throw new Error(`Login de ${email} falhou com status ${response.status}`);
+  }
+  return jar;
+}
+
 /** Faz uma requisição como o front faria (Origin do front e cookies do jar). */
 export async function call(
   baseUrl: string,

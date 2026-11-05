@@ -275,9 +275,11 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
 | POST              | `/auth/refresh`, `/auth/logout`             | cookie de refresh | rotação e revogação do refresh token    |
 | GET               | `/me`                                       | autenticado       | dados e papéis do usuário               |
 | GET               | `/events`, `/events/:id`                    | pública           | lista e detalha eventos publicados      |
-| POST/PATCH/DELETE | `/events`, `/events/:id`                    | ORGANIZER (dono)  | gerencia eventos próprios               |
+| POST/PATCH/DELETE | `/events`, `/events/:id`                    | ORGANIZER (dono)  | gerencia eventos (DELETE só rascunho)   |
+| GET               | `/me/events`                                | ORGANIZER         | eventos próprios em qualquer status     |
 | POST              | `/events/:id/publish`, `/events/:id/cancel` | ORGANIZER (dono)  | publica / cancela (seção 5)             |
-| POST/PATCH        | `/events/:id/ticket-types`                  | ORGANIZER (dono)  | gerencia lotes                          |
+| POST              | `/events/:id/ticket-types`                  | ORGANIZER (dono)  | cria lote                               |
+| PATCH             | `/events/:id/ticket-types/:ticketTypeId`    | ORGANIZER (dono)  | edita lote                              |
 | POST              | `/orders`                                   | BUYER             | cria pedido e sessão de checkout        |
 | GET               | `/orders/:id`                               | dono              | status do pedido                        |
 | POST              | `/orders/:id/cancel`                        | dono              | cancela pedido `PENDING`                |
@@ -289,6 +291,17 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
 
 Documentação OpenAPI/Swagger em `/docs`; o JSON em `/docs-json` alimenta a geração de tipos
 do front-end.
+
+**Catálogo** ([ADR 0004](docs/adr/0004-catalogo-cursor-e-trava-do-evento.md)):
+
+- Listas paginadas por cursor: `{ items, nextCursor }`, com `limit` (padrão 20, máximo 50).
+  `GET /events` aceita `from`/`to` (intervalo `[from, to)` sobre `starts_at`; sem `from`, só
+  eventos futuros) e ordena por `(starts_at, id)`. `GET /me/events` ordena pelos mais novos.
+- Toda escrita trava o evento (`SELECT ... FOR UPDATE`) e, ao mudar o total, também o lote.
+  O total de um lote não fica abaixo do vendido (`total - available`, que inclui reservas).
+- Entrada malformada → 400; regra de janela de vendas ou data no passado → 422; conflito com
+  o estado (total abaixo do vendido, publicar sem lote, evento cancelado, excluir publicado)
+  → 409.
 
 **Check-in** é atômico:
 
@@ -401,6 +414,8 @@ Registrados:
 1. `0001-monorepo-pnpm-turborepo.md`
 2. `0002-convencoes-do-modelo-de-dados.md`: UUID v7, índices parciais no schema, `family_id`
 3. `0003-sessao-em-cookie-e-rotacao-de-refresh.md`: cookies, rotação, argon2, CSRF, rate limit
+4. `0004-catalogo-cursor-e-trava-do-evento.md`: paginação por cursor, trava do evento nas
+   escritas, 400/409/422 no catálogo
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

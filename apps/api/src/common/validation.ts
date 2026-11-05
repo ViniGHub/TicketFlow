@@ -1,4 +1,4 @@
-import { type PipeTransform } from '@nestjs/common';
+import { type ArgumentMetadata, type PipeTransform } from '@nestjs/common';
 import { type ApiBody } from '@nestjs/swagger';
 import { z } from 'zod';
 
@@ -27,12 +27,14 @@ export class RequestValidationError extends Error {
 export class ZodValidationPipe<Schema extends z.ZodType> implements PipeTransform {
   constructor(private readonly schema: Schema) {}
 
-  transform(value: unknown): z.output<Schema> {
+  transform(value: unknown, metadata?: ArgumentMetadata): z.output<Schema> {
     const result = this.schema.safeParse(value);
     if (!result.success) {
+      // Num parâmetro de rota (`@Param('id')`), o caminho começa pelo nome do parâmetro.
+      const prefix = metadata?.type === 'param' && metadata.data ? [metadata.data] : [];
       throw new RequestValidationError(
         result.error.issues.map((issue) => ({
-          path: issue.path.map(String).join('.'),
+          path: [...prefix, ...issue.path.map(String)].join('.'),
           message: issue.message,
         })),
       );
@@ -40,6 +42,9 @@ export class ZodValidationPipe<Schema extends z.ZodType> implements PipeTransfor
     return result.data;
   }
 }
+
+/** Valida um id da rota: um UUID malformado responde 400 em vez de virar erro no Postgres. */
+export const uuidParamPipe = new ZodValidationPipe(z.uuid());
 
 /**
  * Converte um schema zod em schema OpenAPI 3.0 para o Swagger. `input` descreve o que o

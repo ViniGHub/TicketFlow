@@ -23,14 +23,14 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@nestjs/cli": "^12.0.8",
-    "@swc/cli": "^0.8.1",
-    "@swc/core": "^1.16.18",
+    "@nestjs/cli": "^12.0.11",
+    "@swc/cli": "^0.8.2",
+    "@swc/core": "^1.16.21",
     "@ticketflow/config": "workspace:*",
     "@types/node": "^24.19.2",
     "chokidar": "^5.0.0",
-    "eslint": "^10.12.0",
+    "eslint": "^10.14.0",
     "typescript": "~6.0.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.1.0"
   }
 }

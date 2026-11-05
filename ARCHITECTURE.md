@@ -133,6 +133,9 @@ PENDING ──pago (cartão)─────────────────�
 
 A máquina de estados vive em `packages/domain`. Transições fora desta tabela lançam
 `InvalidOrderTransitionError`. Toda transição acontece dentro de uma transação e é testada.
+O efeito de cada uma no estoque (devolve, reserva de novo ou nada) também fica no domínio
+(`stockEffectOf`), para que API, worker e webhook não repitam a regra
+([ADR 0005](docs/adr/0005-dominio-do-pedido.md)). Reembolso não devolve estoque.
 Pedidos em `PROCESSING` **não** são expirados pelo job: o estoque fica reservado até o
 Stripe confirmar ou recusar o pagamento.
 
@@ -140,7 +143,8 @@ Stripe confirmar ou recusar o pagamento.
 
 1. **Checkout**: `POST /orders` com itens `[ {ticketTypeId, quantity} ]` e header opcional
    `Idempotency-Key`. Validações antes de reservar: evento `PUBLISHED`, agora entre
-   `sales_start` e `sales_end`, `quantity <= max_per_order`, itens sem repetição.
+   `sales_start` e `sales_end`, `quantity <= max_per_order`, itens sem repetição e total
+   dentro do limite de `orders.total_cents` (`INTEGER`).
    Em **uma transação**: reserva o estoque (seção 6), cria `orders` (`PENDING`,
    `expires_at = now + RESERVATION_TTL`) e `order_items`, e faz commit.
 2. **Sessão Stripe** (fora da transação): a API cria a Checkout Session (`mode: payment`,
@@ -416,6 +420,8 @@ Registrados:
 3. `0003-sessao-em-cookie-e-rotacao-de-refresh.md`: cookies, rotação, argon2, CSRF, rate limit
 4. `0004-catalogo-cursor-e-trava-do-evento.md`: paginação por cursor, trava do evento nas
    escritas, 400/409/422 no catálogo
+5. `0005-dominio-do-pedido.md`: transições por tabela com efeito no estoque, limite do total,
+   portas com unidade de trabalho
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

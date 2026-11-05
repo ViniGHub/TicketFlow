@@ -19,9 +19,9 @@ e conexão durante uma chamada HTTP, o que a regra 8 do CLAUDE.md proíbe.
 ## Decisão
 
 1. **A expiração acontece em três passos curtos** (`ExpirationService.expireDue`):
-   1. Uma transação curta pega um lote de candidatos (`lockExpiredPending`, `FOR UPDATE SKIP
-LOCKED`). `SKIP LOCKED` pula os pedidos que outra execução ou um cancelamento está
-      processando; as travas acabam com a transação.
+   1. Uma transação curta pega um lote de candidatos com `lockExpiredPending`, que usa
+      `FOR UPDATE SKIP LOCKED`: pula os pedidos que outra execução ou um cancelamento está
+      processando. As travas acabam com a transação.
    2. Para cada candidato, **sem transação aberta**, expira a sessão no Stripe, se houver.
    3. Uma transação por pedido trava (`lockById`), **reconfere** que ele continua `PENDING` e
       só então devolve o estoque e marca `EXPIRED`.

@@ -22,8 +22,12 @@ export const DOMAIN_ERROR_STATUS: Readonly<Record<string, HttpStatus>> = {
   INVALID_SALES_WINDOW: HttpStatus.UNPROCESSABLE_ENTITY,
   EVENT_IN_PAST: HttpStatus.UNPROCESSABLE_ENTITY,
 
-  // Pedidos (ADR 0005). 409: o estado atual do pedido, do evento ou do lote impede a operação.
+  // Pedidos (ADRs 0005 a 0007). Pedido de outro comprador também responde 404.
+  ORDER_NOT_FOUND: HttpStatus.NOT_FOUND,
+  // 409: o estado atual do pedido, do evento ou do lote impede a operação.
   INVALID_ORDER_TRANSITION: HttpStatus.CONFLICT,
+  ORDER_NOT_CANCELLABLE: HttpStatus.CONFLICT,
+  ORDER_PAYMENT_COMPLETED: HttpStatus.CONFLICT,
   INSUFFICIENT_STOCK: HttpStatus.CONFLICT,
   EVENT_NOT_PUBLISHED: HttpStatus.CONFLICT,
   SALES_WINDOW_CLOSED: HttpStatus.CONFLICT,

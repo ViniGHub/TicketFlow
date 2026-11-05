@@ -1,5 +1,6 @@
 import { TicketTypeNotFoundError } from './catalog.js';
 import { DomainError } from './domain-error.js';
+import { compareIds } from './ids.js';
 import {
   assertPurchasable,
   calculateOrderTotal,
@@ -134,12 +135,4 @@ async function placeInTransaction(
     requestHash: input.idempotency?.requestHash ?? null,
   });
   return { order, replayed: false };
-}
-
-/** Mesma ordem do tipo `uuid` do Postgres para ids em minúsculas. */
-function compareIds(a: string, b: string): number {
-  if (a === b) {
-    return 0;
-  }
-  return a < b ? -1 : 1;
 }

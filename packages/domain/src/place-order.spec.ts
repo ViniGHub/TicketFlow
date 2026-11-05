@@ -1,161 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { type EventStatus, TicketTypeNotFoundError } from './catalog.js';
+import { TicketTypeNotFoundError } from './catalog.js';
+import { FAKE_NOW, FakeDatabase } from './fake-database.test-helper.js';
 import {
   EventNotPublishedError,
   IdempotencyConflictError,
   InsufficientStockError,
-  type NewOrder,
-  type Order,
   OrderTotalTooLargeError,
   SalesWindowClosedError,
 } from './order.js';
 import { placeOrder, type PlaceOrderInput } from './place-order.js';
-import {
-  IdempotencyKeyTakenError,
-  type PurchasableTicketType,
-  type TransactionalRepositories,
-  type UnitOfWork,
-} from './ports.js';
 
-const now = new Date('2026-11-20T12:00:00Z');
+const now = FAKE_NOW;
 const options = { now, reservationTtlMinutes: 30 };
 const lotA = '0193a4f2-0000-7000-8000-00000000000a';
 const lotB = '0193a4f2-0000-7000-8000-00000000000b';
-
-interface StoredTicketType extends PurchasableTicketType {
-  available: number;
-}
-
-/**
- * Banco em memória com transação de mentira: `run` copia o estado e o restaura se o trabalho
- * lançar erro, como o rollback do Postgres. Registra as reservas na ordem em que acontecem.
- */
-class FakeDatabase implements UnitOfWork {
-  ticketTypes = new Map<string, StoredTicketType>();
-  orders: Order[] = [];
-  /** Pedidos confirmados por outra transação: o rollback desta não os desfaz. */
-  committedElsewhere: Order[] = [];
-  reservations: string[] = [];
-  runs = 0;
-  /** Simula outra requisição gravando um pedido com a mesma chave antes deste `create`. */
-  beforeCreate?: (order: NewOrder) => void;
-  /** Roda uma vez, antes da primeira reserva (ex.: outra compra leva o estoque). */
-  beforeReserve?: () => void;
-
-  private allOrders(): Order[] {
-    return [...this.orders, ...this.committedElsewhere];
-  }
-
-  addTicketType(
-    id: string,
-    overrides: Partial<Omit<StoredTicketType, 'event'>> & { status?: EventStatus } = {},
-  ): void {
-    const { status = 'PUBLISHED', ...rest } = overrides;
-    this.ticketTypes.set(id, {
-      id,
-      priceCents: 8_000,
-      salesStart: new Date('2026-11-01T00:00:00Z'),
-      salesEnd: new Date('2026-12-01T00:00:00Z'),
-      maxPerOrder: 4,
-      available: 10,
-      event: { id: 'evento-1', status },
-      ...rest,
-    });
-  }
-
-  available(id: string): number | undefined {
-    return this.ticketTypes.get(id)?.available;
-  }
-
-  async run<T>(work: (repositories: TransactionalRepositories) => Promise<T>): Promise<T> {
-    this.runs += 1;
-    const snapshot = {
-      ticketTypes: new Map([...this.ticketTypes].map(([id, lot]) => [id, { ...lot }])),
-      orders: [...this.orders],
-    };
-    try {
-      return await work(this.repositories());
-    } catch (error) {
-      this.ticketTypes = snapshot.ticketTypes;
-      this.orders = snapshot.orders;
-      throw error;
-    }
-  }
-
-  private repositories(): TransactionalRepositories {
-    const nothing = () => Promise.resolve(undefined);
-    return {
-      catalog: {
-        lockForPurchase: (ids) =>
-          Promise.resolve(
-            ids.flatMap((id) => {
-              const lot = this.ticketTypes.get(id);
-              return lot ? [lot] : [];
-            }),
-          ),
-      },
-      inventory: {
-        tryReserve: (id, quantity) => {
-          const hook = this.beforeReserve;
-          this.beforeReserve = undefined;
-          hook?.();
-          this.reservations.push(id);
-          const lot = this.ticketTypes.get(id);
-          if (!lot || lot.available < quantity) {
-            return Promise.resolve(false);
-          }
-          lot.available -= quantity;
-          return Promise.resolve(true);
-        },
-        release: nothing,
-      },
-      orders: {
-        create: (newOrder) => {
-          this.beforeCreate?.(newOrder);
-          this.beforeCreate = undefined;
-          const taken = this.allOrders().some(
-            (order) =>
-              newOrder.idempotencyKey !== null &&
-              order.userId === newOrder.userId &&
-              order.idempotencyKey === newOrder.idempotencyKey,
-          );
-          if (taken) {
-            return Promise.reject(new IdempotencyKeyTakenError());
-          }
-          const order = this.toOrder(newOrder, `pedido-${this.orders.length + 1}`);
-          this.orders.push(order);
-          return Promise.resolve(order);
-        },
-        findByIdempotencyKey: (userId, key) =>
-          Promise.resolve(
-            this.allOrders().find(
-              (order) => order.userId === userId && order.idempotencyKey === key,
-            ) ?? null,
-          ),
-        findById: () => Promise.resolve(null),
-        lockById: () => Promise.resolve(null),
-        lockExpiredPending: () => Promise.resolve([]),
-        updateStatus: nothing,
-        setCheckoutSession: nothing,
-      },
-      outbox: { add: nothing },
-    };
-  }
-
-  toOrder(newOrder: NewOrder, id: string): Order {
-    return {
-      ...newOrder,
-      id,
-      status: 'PENDING',
-      currency: 'BRL',
-      stripeSessionId: null,
-      stripePaymentIntentId: null,
-      paidAt: null,
-      createdAt: now,
-    };
-  }
-}
 
 function setup() {
   const db = new FakeDatabase();

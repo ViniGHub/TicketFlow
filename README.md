@@ -7,7 +7,7 @@
 Stripe Checkout · reserva de estoque atômica · webhooks idempotentes · transactional outbox
 
 [![CI](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml)
-![Progresso do MVP](https://img.shields.io/badge/MVP-7%20de%2023%20etapas-orange)
+![Progresso do MVP](https://img.shields.io/badge/MVP-8%20de%2023%20etapas-orange)
 ![Node](https://img.shields.io/badge/Node-24_LTS-5FA04E?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 
@@ -138,16 +138,16 @@ ticketflow/
 
 ## 🗺️ Progresso
 
-| Fase                        | Objetivo                                  | Status          |
-| --------------------------- | ----------------------------------------- | --------------- |
-| 1. Fundação                 | Monorepo, CI, banco e autenticação        | ✅ concluída    |
-| 2. Catálogo                 | Eventos e lotes                           | ✅ concluída    |
-| 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ⏳ em andamento |
-| 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ⬜ a fazer      |
-| 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⬜ a fazer      |
-| 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer      |
-| 7. Produção                 | Observabilidade, deploy e segurança       | ⬜ a fazer      |
-| 8. Portfólio                | Documentação e material de entrevista     | ⬜ a fazer      |
+| Fase                        | Objetivo                                  | Status       |
+| --------------------------- | ----------------------------------------- | ------------ |
+| 1. Fundação                 | Monorepo, CI, banco e autenticação        | ✅ concluída |
+| 2. Catálogo                 | Eventos e lotes                           | ✅ concluída |
+| 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ✅ concluída |
+| 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ⏳ próxima   |
+| 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⬜ a fazer   |
+| 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer   |
+| 7. Produção                 | Observabilidade, deploy e segurança       | ⬜ a fazer   |
+| 8. Portfólio                | Documentação e material de entrevista     | ⬜ a fazer   |
 
 <details>
 <summary><b>O que foi entregue na fase 1</b></summary>
@@ -173,7 +173,7 @@ ticketflow/
 </details>
 
 <details>
-<summary><b>O que já foi entregue na fase 3</b></summary>
+<summary><b>O que foi entregue na fase 3</b></summary>
 
 - ✅ **3.1 Domínio do pedido:** máquina de estados testada nos 49 pares origem × destino, com
   cobertura de 100% exigida no CI, efeito de cada transição no estoque, erros e total do
@@ -182,6 +182,10 @@ ticketflow/
   ordem de lote, trava compartilhada do evento, `Idempotency-Key` resistente a requisições
   simultâneas e rate limit por comprador. Testado com 50 compradores disputando 10 ingressos,
   em 10 rodadas seguidas.
+- ✅ **3.3 Cancelamento e expiração local:** `POST /orders/:id/cancel` e `ExpirationService`
+  no domínio. A sessão do Stripe expira fora da transação; depois o pedido é travado e
+  reconferido, então o estoque volta uma vez só, mesmo com expirações e cancelamentos
+  simultâneos.
 
 </details>
 
@@ -283,21 +287,21 @@ As dependências são atualizadas pelo Dependabot.
 
 ## 🧠 Decisões técnicas
 
-| Decisão                                         | Por quê                                                                                                                                                            |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Webhook como fonte da verdade**               | O redirect de sucesso só mostra o status; quem confirma o pagamento é o webhook assinado                                                                           |
-| **Estoque atômico**                             | `UPDATE ... WHERE available >= qty` em transação, com `CHECK` como segunda defesa                                                                                  |
-| **Idempotência de webhook**                     | `event.id` com `UNIQUE` na mesma transação; se algo falhar, tudo volta e o Stripe reenvia                                                                          |
-| **Transactional outbox**                        | Jobs nascem de uma tabela gravada junto com a mudança de negócio                                                                                                   |
-| **Expirar no Stripe antes de devolver estoque** | Uma sessão expirada não pode ser paga: quase elimina o pagamento tardio                                                                                            |
-| **Stripe Checkout hospedado**                   | Dados de cartão nunca passam pelo servidor                                                                                                                         |
-| **Sessão em cookie httpOnly via BFF**           | O front faz proxy de `/api/*`, então o cookie é first-party                                                                                                        |
-| **Refresh token rotacionado**                   | Reuso de um token já trocado revoga a sessão inteira: um token roubado vale no máximo uma vez ([ADR 0003](docs/adr/0003-sessao-em-cookie-e-rotacao-de-refresh.md)) |
-| **Monorepo com pnpm + Turborepo**               | Regras de domínio compartilhadas entre API e worker, sem duplicação ([ADR 0001](docs/adr/0001-monorepo-pnpm-turborepo.md))                                         |
-| **UUID v7 e índices parciais no schema**        | IDs ordenáveis e não sequenciais; índices que o Prisma não remove ([ADR 0002](docs/adr/0002-convencoes-do-modelo-de-dados.md))                                     |
-| **Paginação por cursor no catálogo**            | Não pula nem repete eventos durante a navegação e dispensa `COUNT(*)`; escritas travam o evento ([ADR 0004](docs/adr/0004-catalogo-cursor-e-trava-do-evento.md))   |
-| **Máquina de estados do pedido como tabela**    | Cada par origem → destino diz se vale e o que faz com o estoque; API, worker e webhook usam a mesma regra ([ADR 0005](docs/adr/0005-dominio-do-pedido.md))         |
-| **Compra trava o evento em modo compartilhado** | Compras não esperam umas pelas outras, mas um cancelamento de evento não passa no meio de uma compra ([ADR 0006](docs/adr/0006-criacao-de-pedido.md))              |
+| Decisão                                         | Por quê                                                                                                                                                                                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Webhook como fonte da verdade**               | O redirect de sucesso só mostra o status; quem confirma o pagamento é o webhook assinado                                                                                                          |
+| **Estoque atômico**                             | `UPDATE ... WHERE available >= qty` em transação, com `CHECK` como segunda defesa                                                                                                                 |
+| **Idempotência de webhook**                     | `event.id` com `UNIQUE` na mesma transação; se algo falhar, tudo volta e o Stripe reenvia                                                                                                         |
+| **Transactional outbox**                        | Jobs nascem de uma tabela gravada junto com a mudança de negócio                                                                                                                                  |
+| **Expirar no Stripe antes de devolver estoque** | Uma sessão expirada não pode ser paga: quase elimina o pagamento tardio. A chamada fica fora da transação e o pedido é reconferido depois ([ADR 0007](docs/adr/0007-expiracao-e-cancelamento.md)) |
+| **Stripe Checkout hospedado**                   | Dados de cartão nunca passam pelo servidor                                                                                                                                                        |
+| **Sessão em cookie httpOnly via BFF**           | O front faz proxy de `/api/*`, então o cookie é first-party                                                                                                                                       |
+| **Refresh token rotacionado**                   | Reuso de um token já trocado revoga a sessão inteira: um token roubado vale no máximo uma vez ([ADR 0003](docs/adr/0003-sessao-em-cookie-e-rotacao-de-refresh.md))                                |
+| **Monorepo com pnpm + Turborepo**               | Regras de domínio compartilhadas entre API e worker, sem duplicação ([ADR 0001](docs/adr/0001-monorepo-pnpm-turborepo.md))                                                                        |
+| **UUID v7 e índices parciais no schema**        | IDs ordenáveis e não sequenciais; índices que o Prisma não remove ([ADR 0002](docs/adr/0002-convencoes-do-modelo-de-dados.md))                                                                    |
+| **Paginação por cursor no catálogo**            | Não pula nem repete eventos durante a navegação e dispensa `COUNT(*)`; escritas travam o evento ([ADR 0004](docs/adr/0004-catalogo-cursor-e-trava-do-evento.md))                                  |
+| **Máquina de estados do pedido como tabela**    | Cada par origem → destino diz se vale e o que faz com o estoque; API, worker e webhook usam a mesma regra ([ADR 0005](docs/adr/0005-dominio-do-pedido.md))                                        |
+| **Compra trava o evento em modo compartilhado** | Compras não esperam umas pelas outras, mas um cancelamento de evento não passa no meio de uma compra ([ADR 0006](docs/adr/0006-criacao-de-pedido.md))                                             |
 
 ## 🔮 Depois do MVP
 

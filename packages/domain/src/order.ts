@@ -90,6 +90,32 @@ export class EventNotPublishedError extends DomainError {
   }
 }
 
+/** Também para pedido de outro usuário: a resposta não revela que ele existe. */
+export class OrderNotFoundError extends DomainError {
+  readonly code = 'ORDER_NOT_FOUND';
+
+  constructor() {
+    super('Pedido não encontrado.');
+  }
+}
+
+export class OrderNotCancellableError extends DomainError {
+  readonly code = 'ORDER_NOT_CANCELLABLE';
+
+  constructor(readonly status: OrderStatus) {
+    super('Só é possível cancelar um pedido que ainda aguarda pagamento.');
+  }
+}
+
+/** A sessão do Stripe já foi paga quando o cancelamento tentou expirá-la. */
+export class OrderPaymentCompletedError extends DomainError {
+  readonly code = 'ORDER_PAYMENT_COMPLETED';
+
+  constructor() {
+    super('O pagamento deste pedido já foi concluído; ele não pode mais ser cancelado.');
+  }
+}
+
 export class IdempotencyConflictError extends DomainError {
   readonly code = 'IDEMPOTENCY_CONFLICT';
 

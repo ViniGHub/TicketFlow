@@ -1,18 +1,22 @@
-import { type ErrorResponse, type OrderResponse, type Role } from '@ticketflow/contracts';
+import { type ErrorResponse, type OrderResponse } from '@ticketflow/contracts';
 import { createPrismaClient } from '@ticketflow/db';
+import { ExpirationService } from '@ticketflow/domain';
 import { flushRedis, truncateAllTables } from '@ticketflow/testing';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'vitest';
 
 import { call, type CookieJar, sessionFor, startTestApp, type TestApp } from '../../test/app';
+import { DAY_MS, fixtures, fromNow, HOUR_MS } from '../../test/fixtures';
+
+import { PrismaUnitOfWork } from './persistence/prisma-unit-of-work';
+import { NullSessionExpirer } from './session-expirer';
 
 const databaseUrl = inject('databaseUrl');
 const redisUrl = inject('redisUrl');
 const prisma = createPrismaClient(databaseUrl);
+const { createUser, createBuyer, createEvent, createLot, createOrder, availableOf } =
+  fixtures(prisma);
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 const RESERVATION_TTL_MS = 30 * 60 * 1000; // RESERVATION_TTL_MINUTES padrão
-const fromNow = (ms: number) => new Date(Date.now() + ms);
 
 let api: TestApp;
 
@@ -30,60 +34,6 @@ beforeEach(async () => {
   // Zera o rate limit de POST /orders entre os testes.
   await flushRedis(redisUrl);
 });
-
-let userCount = 0;
-
-/** Usuário direto no banco, sem senha utilizável: a sessão vem de `sessionFor`. */
-async function createUser(roles: Role[]): Promise<string> {
-  userCount += 1;
-  const { id } = await prisma.user.create({
-    data: { email: `usuario-${userCount}@teste.local`, name: 'Teste', passwordHash: '-', roles },
-  });
-  return id;
-}
-
-async function createBuyer(): Promise<{ id: string; jar: CookieJar }> {
-  const id = await createUser(['BUYER']);
-  return { id, jar: await sessionFor(id, ['BUYER']) };
-}
-
-async function createEvent(status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED' = 'PUBLISHED') {
-  return prisma.event.create({
-    data: {
-      organizerId: await createUser(['ORGANIZER']),
-      title: 'Show de Teste',
-      description: '',
-      venue: 'Teatro Municipal',
-      timezone: 'America/Sao_Paulo',
-      startsAt: fromNow(30 * DAY_MS),
-      status,
-    },
-  });
-}
-
-interface LotOptions {
-  priceCents?: number;
-  total?: number;
-  maxPerOrder?: number;
-  salesStart?: Date;
-  salesEnd?: Date;
-}
-
-async function createLot(eventId: string, options: LotOptions = {}) {
-  const total = options.total ?? 10;
-  return prisma.ticketType.create({
-    data: {
-      eventId,
-      name: 'Pista',
-      priceCents: options.priceCents ?? 8_000,
-      total,
-      available: total,
-      maxPerOrder: options.maxPerOrder ?? 4,
-      salesStart: options.salesStart ?? fromNow(-DAY_MS),
-      salesEnd: options.salesEnd ?? fromNow(10 * DAY_MS),
-    },
-  });
-}
 
 interface Item {
   ticketTypeId: string;
@@ -109,11 +59,6 @@ async function json<T>(response: Response): Promise<T> {
 
 async function errorOf(response: Response): Promise<ErrorResponse> {
   return json<ErrorResponse>(response);
-}
-
-async function availableOf(ticketTypeId: string): Promise<number> {
-  const lot = await prisma.ticketType.findUniqueOrThrow({ where: { id: ticketTypeId } });
-  return lot.available;
 }
 
 const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : 1);
@@ -378,6 +323,115 @@ describe('Idempotency-Key', () => {
     expect(response.status).toBe(400);
     expect((await errorOf(response)).issues?.[0]?.path).toBe('Idempotency-Key');
     expect(await availableOf(lot.id)).toBe(10);
+  });
+});
+
+describe('POST /orders/:id/cancel', () => {
+  function cancelRequest(jar: CookieJar | undefined, orderId: string): Promise<Response> {
+    return call(api.url, `/orders/${orderId}/cancel`, { method: 'POST', ...(jar && { jar }) });
+  }
+
+  it('o dono cancela um pedido PENDING e o estoque volta ao valor original', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id, { total: 10 });
+    const created = await json<OrderResponse>(
+      await postOrder(buyer.jar, { items: [{ ticketTypeId: lot.id, quantity: 3 }] }),
+    );
+    expect(await availableOf(lot.id)).toBe(7);
+
+    const response = await cancelRequest(buyer.jar, created.id);
+
+    expect(response.status).toBe(200);
+    expect(await json<OrderResponse>(response)).toMatchObject({
+      id: created.id,
+      status: 'CANCELLED',
+    });
+    expect(await availableOf(lot.id)).toBe(10);
+    const stored = await prisma.order.findUniqueOrThrow({ where: { id: created.id } });
+    expect(stored.status).toBe('CANCELLED');
+  });
+
+  it('cancelar duas vezes: a segunda responde 409 e o estoque volta uma vez só', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id, { total: 10 });
+    const order = await createOrder(buyer.id, [{ ticketTypeId: lot.id, quantity: 2 }]);
+
+    expect((await cancelRequest(buyer.jar, order.id)).status).toBe(200);
+    const again = await cancelRequest(buyer.jar, order.id);
+
+    expect(again.status).toBe(409);
+    expect((await errorOf(again)).code).toBe('ORDER_NOT_CANCELLABLE');
+    expect(await availableOf(lot.id)).toBe(10);
+  });
+
+  it.each(['EXPIRED', 'PAID'] as const)(
+    'pedido %s responde 409 sem mexer no estoque',
+    async (status) => {
+      const buyer = await createBuyer();
+      const event = await createEvent();
+      const lot = await createLot(event.id, { total: 10 });
+      const order = await createOrder(buyer.id, [{ ticketTypeId: lot.id, quantity: 2 }]);
+      await prisma.order.update({ where: { id: order.id }, data: { status } });
+
+      const response = await cancelRequest(buyer.jar, order.id);
+
+      expect(response.status).toBe(409);
+      expect((await errorOf(response)).code).toBe('ORDER_NOT_CANCELLABLE');
+      expect(await availableOf(lot.id)).toBe(8);
+      const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+      expect(stored.status).toBe(status);
+    },
+  );
+
+  it('pedido de outro comprador ou inexistente responde 404; id inválido, 400', async () => {
+    const [owner, intruder] = [await createBuyer(), await createBuyer()];
+    const event = await createEvent();
+    const lot = await createLot(event.id, { total: 10 });
+    const order = await createOrder(owner.id, [{ ticketTypeId: lot.id, quantity: 1 }]);
+
+    const fromIntruder = await cancelRequest(intruder.jar, order.id);
+    expect(fromIntruder.status).toBe(404);
+    expect((await errorOf(fromIntruder)).code).toBe('ORDER_NOT_FOUND');
+    expect((await cancelRequest(owner.jar, '0193a4f2-0000-7000-8000-000000000000')).status).toBe(
+      404,
+    );
+    expect((await cancelRequest(owner.jar, 'nao-e-uuid')).status).toBe(400);
+    expect(await availableOf(lot.id)).toBe(9);
+  });
+
+  it('sem sessão responde 401', async () => {
+    const response = await cancelRequest(undefined, '0193a4f2-0000-7000-8000-000000000000');
+    expect(response.status).toBe(401);
+  });
+
+  it('cancelamento e expiração simultâneos devolvem o estoque uma vez só', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id, { total: 10 });
+    const order = await createOrder(buyer.id, [{ ticketTypeId: lot.id, quantity: 2 }]);
+    await prisma.order.update({ where: { id: order.id }, data: { expiresAt: fromNow(-60_000) } });
+    const expiration = new ExpirationService(
+      new PrismaUnitOfWork(prisma),
+      new NullSessionExpirer(),
+    );
+
+    const [response, summary] = await Promise.all([
+      cancelRequest(buyer.jar, order.id),
+      expiration.expireDue(new Date()),
+    ]);
+
+    expect(await availableOf(lot.id)).toBe(10);
+    const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    if (response.status === 200) {
+      expect(stored.status).toBe('CANCELLED');
+      expect(summary.expired).toEqual([]);
+    } else {
+      expect(response.status).toBe(409);
+      expect(stored.status).toBe('EXPIRED');
+      expect(summary.expired).toEqual([order.id]);
+    }
   });
 });
 

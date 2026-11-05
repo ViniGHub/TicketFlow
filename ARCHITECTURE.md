@@ -175,10 +175,12 @@ Stripe confirmar ou recusar o pagamento.
 5. **Página de sucesso**: apenas consulta `GET /orders/:id` e mostra o status atual.
    Se ainda `PENDING`/`PROCESSING`, faz polling por alguns segundos. **Nunca** marca como pago.
 6. **Expiração (job `expire-orders`, a cada minuto)**: busca pedidos `PENDING` com
-   `expires_at < now()` em lotes (`FOR UPDATE SKIP LOCKED`). Para cada um, **primeiro**
-   chama `stripe.checkout.sessions.expire(...)`:
+   `expires_at < now()` em lotes (`FOR UPDATE SKIP LOCKED`, numa transação curta). Para cada
+   um, **primeiro** chama `stripe.checkout.sessions.expire(...)`, **fora de transação**, e
+   só depois trava o pedido e reconfere que ele continua `PENDING`
+   ([ADR 0007](docs/adr/0007-expiracao-e-cancelamento.md)):
    - Sucesso, ou sessão já expirada, ou pedido sem sessão → marca `EXPIRED` e devolve o
-     estoque (transação).
+     estoque (transação). Se outra execução ou um cancelamento chegou antes, não faz nada.
    - Stripe responde que a sessão está `complete` → **não** libera estoque; busca a sessão
      (`sessions.retrieve`) e aplica o mesmo handler do webhook (o pagamento venceu a corrida).
    - Erro transitório do Stripe → deixa para a próxima execução.
@@ -319,7 +321,11 @@ do front-end.
   (até a etapa 4.1, sem `checkoutUrl`). Sem estoque, vendas fechadas ou evento fora de venda
   → 409; acima de `max_per_order`, total grande demais ou `Idempotency-Key` com outro corpo
   → 422; lote inexistente → 404.
-- Rate limit de 20 pedidos por minuto por usuário.
+- `POST /orders/:id/cancel` (só o dono): expira a sessão no Stripe, depois devolve o estoque
+  e responde 200 com o pedido `CANCELLED`. Pedido que não está `PENDING` → 409
+  (`ORDER_NOT_CANCELLABLE`); sessão já paga → 409 (`ORDER_PAYMENT_COMPLETED`); pedido de
+  outro comprador → 404.
+- Rate limit de 20 pedidos por minuto por usuário (criação e cancelamento somados).
 
 **Check-in** é atômico:
 
@@ -439,6 +445,8 @@ Registrados:
    portas com unidade de trabalho
 6. `0006-criacao-de-pedido.md`: caso de uso no domínio, `FOR SHARE` no evento, idempotência
    sob concorrência, rate limit por usuário
+7. `0007-expiracao-e-cancelamento.md`: sessão expira fora da transação, depois trava e
+   reconfere; mesma ordem no cancelamento
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

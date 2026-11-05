@@ -1,10 +1,21 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBody,
   ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiHeader,
+  ApiNotFoundResponse,
+  ApiOkResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
   ApiUnprocessableEntityResponse,
@@ -27,13 +38,14 @@ import {
   Roles,
   RolesGuard,
 } from '../auth/auth.guards';
-import { openApiSchema, ZodValidationPipe } from '../common/validation';
+import { openApiSchema, uuidParamPipe, ZodValidationPipe } from '../common/validation';
 import { UserThrottlerGuard } from '../security/user-throttler.guard';
 
 import { IDEMPOTENCY_HEADER, IdempotencyKeyHeader } from './idempotency-key.decorator';
 import { OrdersService } from './orders.service';
 
 const ONE_MINUTE_MS = 60_000;
+const orderSchema = openApiSchema(orderResponseSchema, 'output');
 
 @ApiTags('orders')
 @ApiCookieAuth()
@@ -57,7 +69,7 @@ export class OrdersController {
   @ApiBody({ schema: openApiSchema(createOrderRequestSchema) })
   @ApiCreatedResponse({
     description: 'Pedido PENDING com o estoque reservado até `expiresAt`.',
-    schema: openApiSchema(orderResponseSchema, 'output'),
+    schema: orderSchema,
   })
   @ApiConflictResponse({
     description: 'Sem estoque, vendas fechadas ou evento fora de venda.',
@@ -78,5 +90,22 @@ export class OrdersController {
       response.setHeader('Idempotent-Replayed', 'true');
     }
     return order;
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({
+    description: 'Pedido CANCELLED; o estoque voltou ao lote.',
+    schema: orderSchema,
+  })
+  @ApiNotFoundResponse({ description: 'Pedido inexistente ou de outro comprador.' })
+  @ApiConflictResponse({
+    description: 'O pedido não está aguardando pagamento, ou o pagamento já foi concluído.',
+  })
+  cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParamPipe) orderId: string,
+  ): Promise<OrderResponse> {
+    return this.orders.cancel(user.id, orderId);
   }
 }

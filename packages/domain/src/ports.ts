@@ -163,3 +163,10 @@ export interface PaymentGateway {
   retrieveCheckoutSession(sessionId: string): Promise<CheckoutSessionState>;
   refund(orderId: string, paymentIntentId: string): Promise<void>;
 }
+
+/**
+ * O que a expiração e o cancelamento precisam do gateway: expirar a sessão antes de devolver
+ * o estoque, para ela não poder mais ser paga. Até a etapa 4.1 a API usa uma implementação
+ * nula, porque ainda não existem sessões.
+ */
+export type SessionExpirer = Pick<PaymentGateway, 'expireCheckoutSession'>;

@@ -7,7 +7,7 @@ export default defineVitestConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.spec.ts', 'src/**/*.int-spec.ts'],
+      exclude: ['src/**/*.spec.ts', 'src/**/*.int-spec.ts', 'src/**/*.test-helper.ts'],
       reporter: ['text'],
       thresholds: {
         'src/order-status.ts': { 100: true },

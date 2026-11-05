@@ -40,6 +40,8 @@ class FakeDatabase implements UnitOfWork {
   runs = 0;
   /** Simula outra requisição gravando um pedido com a mesma chave antes deste `create`. */
   beforeCreate?: (order: NewOrder) => void;
+  /** Roda uma vez, antes da primeira reserva (ex.: outra compra leva o estoque). */
+  beforeReserve?: () => void;
 
   private allOrders(): Order[] {
     return [...this.orders, ...this.committedElsewhere];
@@ -95,6 +97,9 @@ class FakeDatabase implements UnitOfWork {
       },
       inventory: {
         tryReserve: (id, quantity) => {
+          const hook = this.beforeReserve;
+          this.beforeReserve = undefined;
+          hook?.();
           this.reservations.push(id);
           const lot = this.ticketTypes.get(id);
           if (!lot || lot.available < quantity) {
@@ -352,5 +357,45 @@ describe('Idempotency-Key', () => {
         IdempotencyConflictError,
       );
     });
+
+    it('se a outra levou o último ingresso, devolve o pedido dela em vez de recusar', async () => {
+      const db = setup();
+      db.beforeReserve = () => {
+        db.committedElsewhere.push(
+          db.toOrder(
+            {
+              userId: 'comprador-1',
+              items: [{ ticketTypeId: lotA, quantity: 2, unitPriceCents: 8_000 }],
+              totalCents: 16_000,
+              expiresAt: new Date('2026-11-20T12:30:00Z'),
+              idempotencyKey: key.key,
+              requestHash: key.requestHash,
+            },
+            'pedido-rival',
+          ),
+        );
+        db.addTicketType(lotA, { available: 0 });
+      };
+
+      const result = await placeOrder(db, buy(items, key), options);
+      expect(result).toMatchObject({ replayed: true, order: { id: 'pedido-rival' } });
+    });
+  });
+
+  it('sem pedido com a chave, o erro original segue', async () => {
+    const db = setup();
+    db.addTicketType(lotA, { available: 1 });
+    await expect(placeOrder(db, buy(items, key), options)).rejects.toThrow(InsufficientStockError);
+    // A transação da compra e a consulta da chave.
+    expect(db.runs).toBe(2);
+  });
+
+  it('erro de infraestrutura não dispara a consulta da chave', async () => {
+    const db = setup();
+    db.beforeReserve = () => {
+      throw new Error('conexão perdida');
+    };
+    await expect(placeOrder(db, buy(items, key), options)).rejects.toThrow('conexão perdida');
+    expect(db.runs).toBe(1);
   });
 });

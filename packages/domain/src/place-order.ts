@@ -1,4 +1,5 @@
 import { TicketTypeNotFoundError } from './catalog.js';
+import { DomainError } from './domain-error.js';
 import {
   assertPurchasable,
   calculateOrderTotal,
@@ -44,6 +45,11 @@ const MINUTE_MS = 60_000;
  * 3. Reserva lote a lote, em ordem de id, para duas compras nunca se travarem em ordens
  *    opostas. Se faltar estoque em um, a transação inteira volta e nada fica reservado.
  * 4. Grava o pedido com o preço atual de cada lote e a reserva valendo até `now + TTL`.
+ *
+ * Com `Idempotency-Key`, outra requisição com a mesma chave pode gravar o pedido enquanto esta
+ * corre, depois do passo 1. Esta então falha: no `UNIQUE` da chave ou antes, por exemplo sem
+ * estoque, porque a outra levou o último ingresso. Nos dois casos a transação volta inteira
+ * e uma consulta nova devolve o pedido da outra requisição, como se fosse um replay.
  */
 export async function placeOrder(
   uow: UnitOfWork,
@@ -53,13 +59,29 @@ export async function placeOrder(
   try {
     return await uow.run((repositories) => placeInTransaction(repositories, input, options));
   } catch (error) {
-    // Outra requisição com a mesma chave gravou primeiro e o UNIQUE desfez esta transação
-    // inteira, inclusive a reserva. A nova tentativa encontra o pedido dela no passo 1.
-    if (error instanceof IdempotencyKeyTakenError) {
-      return uow.run((repositories) => placeInTransaction(repositories, input, options));
+    const { idempotency } = input;
+    const lostRace =
+      idempotency !== undefined &&
+      !(error instanceof IdempotencyConflictError) &&
+      (error instanceof IdempotencyKeyTakenError || error instanceof DomainError);
+    if (lostRace) {
+      const existing = await uow.run(({ orders }) =>
+        orders.findByIdempotencyKey(input.userId, idempotency.key),
+      );
+      if (existing) {
+        return replay(existing, idempotency.requestHash);
+      }
     }
     throw error;
   }
+}
+
+/** Mesma chave: mesmo corpo devolve o pedido; corpo diferente é recusado. */
+function replay(existing: Order, requestHash: string): PlaceOrderResult {
+  if (existing.requestHash !== requestHash) {
+    throw new IdempotencyConflictError();
+  }
+  return { order: existing, replayed: true };
 }
 
 async function placeInTransaction(
@@ -70,10 +92,7 @@ async function placeInTransaction(
   if (input.idempotency) {
     const existing = await orders.findByIdempotencyKey(input.userId, input.idempotency.key);
     if (existing) {
-      if (existing.requestHash !== input.idempotency.requestHash) {
-        throw new IdempotencyConflictError();
-      }
-      return { order: existing, replayed: true };
+      return replay(existing, input.idempotency.requestHash);
     }
   }
 

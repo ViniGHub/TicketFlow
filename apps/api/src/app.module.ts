@@ -12,6 +12,7 @@ import { loggerParams } from './config/logger';
 import { DatabaseModule } from './database/database.module';
 import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
+import { OrdersModule } from './orders/orders.module';
 import { REDIS, RedisModule } from './redis/redis.module';
 import { OriginGuard } from './security/origin.guard';
 import { RedisThrottlerStorage } from './security/redis-throttler.storage';
@@ -37,6 +38,7 @@ export class AppModule {
         HealthModule,
         AuthModule,
         EventsModule,
+        OrdersModule,
       ],
       providers: [
         { provide: APP_FILTER, useClass: HttpExceptionFilter },

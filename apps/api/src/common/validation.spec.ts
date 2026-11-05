@@ -1,5 +1,6 @@
 import { registerRequestSchema } from '@ticketflow/contracts';
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import {
   openApiSchema,
@@ -43,6 +44,13 @@ describe('ZodValidationPipe', () => {
     );
     const id = '019a0000-0000-7000-8000-000000000001';
     expect(uuidParamPipe.transform(id, { type: 'param', data: 'id' })).toBe(id);
+  });
+
+  it('usa o caminho informado no construtor, como o nome de um header', () => {
+    const headerPipe = new ZodValidationPipe(z.string().min(1), 'Idempotency-Key');
+    expect(() => headerPipe.transform('', { type: 'custom' })).toThrow(
+      expect.objectContaining({ issues: [expect.objectContaining({ path: 'Idempotency-Key' })] }),
+    );
   });
 });
 

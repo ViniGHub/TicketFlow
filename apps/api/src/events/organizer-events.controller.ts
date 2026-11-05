@@ -2,11 +2,13 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -15,6 +17,7 @@ import {
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import {
@@ -22,8 +25,12 @@ import {
   createEventRequestSchema,
   type CreateTicketTypeRequest,
   createTicketTypeRequestSchema,
+  eventPageSchema,
   type EventResponse,
   eventResponseSchema,
+  type MyEventsQuery,
+  myEventsQuerySchema,
+  type Page,
   type TicketTypeResponse,
   ticketTypeResponseSchema,
   type UpdateEventRequest,
@@ -42,10 +49,35 @@ import {
 import { openApiSchema, uuidParamPipe, ZodValidationPipe } from '../common/validation';
 
 import { EventsService } from './events.service';
+import { cursorQueryDocs, limitQueryDocs } from './query-docs';
 import { TicketTypesService } from './ticket-types.service';
 
 const eventSchema = openApiSchema(eventResponseSchema, 'output');
 const ticketTypeSchema = openApiSchema(ticketTypeResponseSchema, 'output');
+
+/** Eventos do próprio organizador, inclusive rascunhos (o catálogo público só mostra publicados). */
+@ApiTags('events')
+@ApiCookieAuth()
+@Controller('me/events')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ORGANIZER')
+export class MyEventsController {
+  constructor(private readonly events: EventsService) {}
+
+  @Get()
+  @ApiQuery(cursorQueryDocs)
+  @ApiQuery(limitQueryDocs)
+  @ApiOkResponse({
+    description: 'Eventos do organizador em qualquer status, os criados por último primeiro.',
+    schema: openApiSchema(eventPageSchema, 'output'),
+  })
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(myEventsQuerySchema)) query: MyEventsQuery,
+  ): Promise<Page<EventResponse>> {
+    return this.events.listMine(user.id, query);
+  }
+}
 
 /**
  * Gestão do catálogo pelo organizador. Sem o papel ORGANIZER: 403. Evento de outro

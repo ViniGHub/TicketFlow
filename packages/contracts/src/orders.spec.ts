@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   createOrderRequestSchema,
+  createOrderResponseSchema,
   idempotencyKeySchema,
   ORDER_LIMITS,
   orderResponseSchema,
@@ -82,18 +83,36 @@ describe('header Idempotency-Key', () => {
   });
 });
 
+const pendingOrder = {
+  id: lotA,
+  status: 'PENDING',
+  totalCents: 16_000,
+  currency: 'BRL',
+  expiresAt: '2026-11-05T12:30:00.000Z',
+  createdAt: '2026-11-05T12:00:00.000Z',
+  items: [{ ticketTypeId: lotB, quantity: 2, unitPriceCents: 8_000 }],
+};
+
 describe('resposta do pedido', () => {
   it('aceita um pedido pendente', () => {
-    const order = {
-      id: lotA,
-      status: 'PENDING',
-      totalCents: 16_000,
-      currency: 'BRL',
-      expiresAt: '2026-11-05T12:30:00.000Z',
-      createdAt: '2026-11-05T12:00:00.000Z',
-      items: [{ ticketTypeId: lotB, quantity: 2, unitPriceCents: 8_000 }],
-    };
-    expect(orderResponseSchema.parse(order)).toEqual(order);
+    expect(orderResponseSchema.parse(pendingOrder)).toEqual(pendingOrder);
+  });
+});
+
+describe('resposta do POST /orders', () => {
+  it.each([
+    ['com a URL do checkout', 'https://checkout.stripe.com/c/pay/cs_test_a1'],
+    ['sem URL (pedido que não pode mais ser pago)', null],
+  ])('aceita o pedido %s', (_case, checkoutUrl) => {
+    const created = { ...pendingOrder, checkoutUrl };
+    expect(createOrderResponseSchema.parse(created)).toEqual(created);
+  });
+
+  it('exige o campo e uma URL válida', () => {
+    expect(createOrderResponseSchema.safeParse(pendingOrder).success).toBe(false);
+    expect(
+      createOrderResponseSchema.safeParse({ ...pendingOrder, checkoutUrl: 'checkout' }).success,
+    ).toBe(false);
   });
 });
 
@@ -105,5 +124,10 @@ describe('OpenAPI', () => {
     expect(
       z.toJSONSchema(orderResponseSchema, { io: 'output', target: 'openapi-3.0' }),
     ).toMatchObject({ type: 'object' });
+    const created = z.toJSONSchema(createOrderResponseSchema, {
+      io: 'output',
+      target: 'openapi-3.0',
+    });
+    expect(created.required).toContain('checkoutUrl');
   });
 });

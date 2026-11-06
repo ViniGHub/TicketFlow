@@ -33,6 +33,13 @@ export interface PurchasableTicketType {
   event: { id: string; status: EventStatus };
 }
 
+/** Nome do lote e título do evento, para descrever os itens na página de pagamento. */
+export interface TicketTypeLabel {
+  id: string;
+  name: string;
+  eventTitle: string;
+}
+
 export interface CatalogRepository {
   /**
    * Lotes de uma compra, com o evento de cada um. Antes de ler os lotes, trava os eventos em
@@ -42,6 +49,9 @@ export interface CatalogRepository {
    * fica fora do resultado.
    */
   lockForPurchase(ticketTypeIds: readonly string[]): Promise<PurchasableTicketType[]>;
+
+  /** Nomes dos lotes e dos eventos, sem trava. Lote inexistente fica fora do resultado. */
+  findLabels(ticketTypeIds: readonly string[]): Promise<TicketTypeLabel[]>;
 }
 
 /**
@@ -128,11 +138,21 @@ export interface CheckoutLineItem {
   quantity: number;
 }
 
+/**
+ * Sessão de pagamento de um pedido. Tudo aqui vem do pedido gravado, nada do relógio: uma
+ * retentativa com a mesma chave de idempotência precisa mandar ao Stripe exatamente os mesmos
+ * parâmetros, senão ele recusa a chave (ADR 0008).
+ */
 export interface CheckoutSessionRequest {
   orderId: string;
   lineItems: readonly CheckoutLineItem[];
-  /** Fim da reserva. A implementação respeita o mínimo de 30 min do Stripe (seção 5). */
+  /** Fim da reserva (`orders.expires_at`). */
   expiresAt: Date;
+  /**
+   * Criação do pedido: a referência para os limites de validade da sessão no Stripe (de 30 min
+   * a 24 h). A implementação ajusta `expiresAt` a esses limites (seção 5).
+   */
+  orderCreatedAt: Date;
 }
 
 export interface CheckoutSession {
@@ -146,6 +166,8 @@ export interface CheckoutSessionState {
   status: 'open' | 'complete' | 'expired';
   paymentStatus: 'paid' | 'unpaid' | 'no_payment_required';
   paymentIntentId: string | null;
+  /** Página de pagamento. O Stripe só a informa enquanto a sessão está `open`. */
+  url: string | null;
 }
 
 /** Resultado de expirar uma sessão: `complete` quer dizer que o pagamento venceu a corrida. */
@@ -166,7 +188,12 @@ export interface PaymentGateway {
 
 /**
  * O que a expiração e o cancelamento precisam do gateway: expirar a sessão antes de devolver
- * o estoque, para ela não poder mais ser paga. Até a etapa 4.1 a API usa uma implementação
- * nula, porque ainda não existem sessões.
+ * o estoque, para ela não poder mais ser paga.
  */
 export type SessionExpirer = Pick<PaymentGateway, 'expireCheckoutSession'>;
+
+/** O que a abertura do pagamento (`startCheckout`) precisa do gateway. */
+export type CheckoutGateway = Pick<
+  PaymentGateway,
+  'createCheckoutSession' | 'retrieveCheckoutSession' | 'expireCheckoutSession'
+>;

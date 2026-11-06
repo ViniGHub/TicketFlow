@@ -21,6 +21,8 @@ export interface TransactionalRepositories {
   orders: OrderRepository;
   inventory: InventoryRepository;
   outbox: OutboxRepository;
+  tickets: TicketRepository;
+  stripeEvents: StripeEventRepository;
 }
 
 /** Lote como a compra precisa dele: preço, janela de vendas, limite e o evento. */
@@ -132,6 +134,29 @@ export interface OutboxRepository {
   add(message: OutboxMessage): Promise<void>;
 }
 
+/** Ingresso a emitir. O `event_id` desnormalizado (seção 3) a implementação lê do lote. */
+export interface NewTicket {
+  orderId: string;
+  ticketTypeId: string;
+  /** 32 bytes aleatórios em base64url (seção 10). */
+  qrToken: string;
+}
+
+export interface TicketRepository {
+  /** Emite os ingressos, na mesma transação da mudança do pedido para `PAID`. */
+  createMany(tickets: readonly NewTicket[]): Promise<void>;
+}
+
+/** Eventos do Stripe já processados (seção 7). */
+export interface StripeEventRepository {
+  /**
+   * Registra o evento como processado, sem erro se ele já existe (`ON CONFLICT DO NOTHING`).
+   * Devolve `false` quando outra transação já o registrou: é uma entrega repetida. Se essa
+   * outra transação ainda está aberta, espera por ela.
+   */
+  record(eventId: string, type: string): Promise<boolean>;
+}
+
 export interface CheckoutLineItem {
   name: string;
   unitPriceCents: Cents;
@@ -168,6 +193,19 @@ export interface CheckoutSessionState {
   paymentIntentId: string | null;
   /** Página de pagamento. O Stripe só a informa enquanto a sessão está `open`. */
   url: string | null;
+}
+
+/**
+ * Evento do Stripe com a assinatura já conferida (seção 5, passo 4). `session` vem preenchida
+ * nos eventos de Checkout Session de um pedido do TicketFlow; é `null` nos outros tipos e nas
+ * sessões sem `order_id`.
+ */
+export interface PaymentEvent {
+  id: string;
+  type: string;
+  /** Quando o Stripe gerou o evento. */
+  createdAt: Date;
+  session: CheckoutSessionState | null;
 }
 
 /** Resultado de expirar uma sessão: `complete` quer dizer que o pagamento venceu a corrida. */

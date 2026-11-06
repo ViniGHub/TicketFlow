@@ -1,3 +1,4 @@
+import { type NestApplicationOptions } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter, type NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -24,6 +25,12 @@ function setupSwagger(app: NestExpressApplication): void {
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' });
 }
 
+/**
+ * Opções do Nest, as mesmas nos testes de integração. `rawBody` guarda o corpo como chegou
+ * (`req.rawBody`): a assinatura do webhook do Stripe é conferida sobre esses bytes.
+ */
+export const APP_OPTIONS: NestApplicationOptions = { bufferLogs: true, rawBody: true };
+
 /** Cria a API configurada. Usada pelo main.ts. */
 export async function createApp(env: ApiEnv): Promise<NestExpressApplication> {
   // Adapter importado estaticamente: sem isso o Nest carrega o Express sob demanda e o
@@ -31,7 +38,7 @@ export async function createApp(env: ApiEnv): Promise<NestExpressApplication> {
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule.register(env),
     new ExpressAdapter(),
-    { bufferLogs: true },
+    APP_OPTIONS,
   );
   configureApp(app, env);
   return app;

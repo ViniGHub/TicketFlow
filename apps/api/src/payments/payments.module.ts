@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { type PaymentGateway } from '@ticketflow/domain';
-import { createStripePaymentGateway } from '@ticketflow/payments';
+import { createStripePaymentGateway, StripeWebhookParser } from '@ticketflow/payments';
 
 import { type ApiEnv } from '../config/env';
 import { API_ENV } from '../config/env.token';
@@ -11,6 +11,9 @@ import { API_ENV } from '../config/env.token';
  */
 export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');
 
+/** Token do `StripeWebhookParser`, que confere a assinatura com o `STRIPE_WEBHOOK_SECRET`. */
+export const STRIPE_WEBHOOK_PARSER = Symbol('STRIPE_WEBHOOK_PARSER');
+
 /** Gateway do Stripe, do pacote compartilhado com o worker (ADR 0008). */
 @Module({
   providers: [
@@ -20,7 +23,13 @@ export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');
       useFactory: (env: ApiEnv): PaymentGateway =>
         createStripePaymentGateway({ secretKey: env.STRIPE_SECRET_KEY, appUrl: env.APP_URL }),
     },
+    {
+      provide: STRIPE_WEBHOOK_PARSER,
+      inject: [API_ENV],
+      useFactory: (env: ApiEnv): StripeWebhookParser =>
+        new StripeWebhookParser(env.STRIPE_WEBHOOK_SECRET),
+    },
   ],
-  exports: [PAYMENT_GATEWAY],
+  exports: [PAYMENT_GATEWAY, STRIPE_WEBHOOK_PARSER],
 })
 export class PaymentsModule {}

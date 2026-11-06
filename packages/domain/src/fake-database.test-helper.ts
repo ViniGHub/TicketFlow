@@ -9,6 +9,8 @@ import {
   type CheckoutSessionState,
   type ExpireCheckoutSessionResult,
   IdempotencyKeyTakenError,
+  type NewTicket,
+  type OutboxMessage,
   type PurchasableTicketType,
   type SessionExpirer,
   type TransactionalRepositories,
@@ -126,6 +128,10 @@ export class FakeDatabase implements UnitOfWork {
   reservations: string[] = [];
   releases: { ticketTypeId: string; quantity: number }[] = [];
   locks: string[] = [];
+  tickets: NewTicket[] = [];
+  outbox: OutboxMessage[] = [];
+  /** `stripe_events`: id do evento → tipo. */
+  stripeEvents = new Map<string, string>();
   runs = 0;
   /** Transações abertas agora: chamadas ao gateway precisam acontecer com zero (regra 8). */
   openTransactions = 0;
@@ -135,6 +141,8 @@ export class FakeDatabase implements UnitOfWork {
   beforeReserve?: () => void;
   /** Roda uma vez, antes de travar um pedido (ex.: outra transação muda o status). */
   beforeLock?: (orderId: string) => void;
+  /** Roda antes de cada gravação na outbox (ex.: lançar erro no meio do processamento). */
+  beforeOutboxAdd?: (message: OutboxMessage) => void;
 
   addTicketType(
     id: string,
@@ -198,12 +206,18 @@ export class FakeDatabase implements UnitOfWork {
     const snapshot = {
       ticketTypes: new Map([...this.ticketTypes].map(([id, lot]) => [id, { ...lot }])),
       orders: [...this.orders],
+      tickets: [...this.tickets],
+      outbox: [...this.outbox],
+      stripeEvents: new Map(this.stripeEvents),
     };
     try {
       return await work(this.repositories());
     } catch (error) {
       this.ticketTypes = snapshot.ticketTypes;
       this.orders = snapshot.orders;
+      this.tickets = snapshot.tickets;
+      this.outbox = snapshot.outbox;
+      this.stripeEvents = snapshot.stripeEvents;
       throw error;
     } finally {
       this.openTransactions -= 1;
@@ -232,7 +246,6 @@ export class FakeDatabase implements UnitOfWork {
   }
 
   private repositories(): TransactionalRepositories {
-    const nothing = () => Promise.resolve(undefined);
     return {
       catalog: {
         lockForPurchase: (ids) =>
@@ -319,7 +332,28 @@ export class FakeDatabase implements UnitOfWork {
           return Promise.resolve();
         },
       },
-      outbox: { add: nothing },
+      outbox: {
+        add: (message) => {
+          this.beforeOutboxAdd?.(message);
+          this.outbox.push(message);
+          return Promise.resolve();
+        },
+      },
+      tickets: {
+        createMany: (tickets) => {
+          this.tickets.push(...tickets);
+          return Promise.resolve();
+        },
+      },
+      stripeEvents: {
+        record: (eventId, type) => {
+          if (this.stripeEvents.has(eventId)) {
+            return Promise.resolve(false);
+          }
+          this.stripeEvents.set(eventId, type);
+          return Promise.resolve(true);
+        },
+      },
     };
   }
 }

@@ -4,6 +4,7 @@ import {
   IdempotencyKeyTakenError,
   type InventoryRepository,
   type NewOrder,
+  type NewTicket,
   type Order,
   type OrderRepository,
   type OrderStatus,
@@ -11,6 +12,8 @@ import {
   type OutboxMessage,
   type OutboxRepository,
   type PurchasableTicketType,
+  type StripeEventRepository,
+  type TicketRepository,
   type TicketTypeLabel,
 } from '@ticketflow/domain';
 
@@ -170,5 +173,47 @@ export class PrismaOutboxRepository implements OutboxRepository {
 
   async add({ type, payload }: OutboxMessage): Promise<void> {
     await this.tx.outbox.create({ data: { type, payload } });
+  }
+}
+
+export class PrismaTicketRepository implements TicketRepository {
+  constructor(private readonly tx: Tx) {}
+
+  async createMany(tickets: readonly NewTicket[]): Promise<void> {
+    if (tickets.length === 0) {
+      return;
+    }
+    // event_id é desnormalizado para o check-in atômico (seção 9): vem do lote de cada ticket.
+    const lots = await this.tx.ticketType.findMany({
+      where: { id: { in: [...new Set(tickets.map((ticket) => ticket.ticketTypeId))] } },
+      select: { id: true, eventId: true },
+    });
+    const eventOf = new Map(lots.map((lot) => [lot.id, lot.eventId]));
+    await this.tx.ticket.createMany({
+      data: tickets.map(({ orderId, ticketTypeId, qrToken }) => {
+        const eventId = eventOf.get(ticketTypeId);
+        // order_items referencia o lote com ON DELETE RESTRICT: faltar aqui é dado corrompido.
+        if (!eventId) {
+          throw new Error(`O lote ${ticketTypeId} do pedido ${orderId} não existe.`);
+        }
+        return { orderId, ticketTypeId, eventId, qrToken };
+      }),
+    });
+  }
+}
+
+export class PrismaStripeEventRepository implements StripeEventRepository {
+  constructor(private readonly tx: Tx) {}
+
+  /**
+   * `ON CONFLICT DO NOTHING` em vez de deixar a PK falhar: no Postgres, um erro aborta a
+   * transação inteira. Com outra transação gravando o mesmo evento, o INSERT espera por ela:
+   * se ela confirmar, conta 0 (repetido); se ela desfizer, esta grava e processa.
+   */
+  async record(eventId: string, type: string): Promise<boolean> {
+    const inserted = await this.tx.$executeRaw`
+      INSERT INTO stripe_events (event_id, type) VALUES (${eventId}, ${type})
+      ON CONFLICT (event_id) DO NOTHING`;
+    return inserted === 1;
   }
 }

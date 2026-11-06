@@ -7,7 +7,7 @@
 Stripe Checkout · reserva de estoque atômica · webhooks idempotentes · transactional outbox
 
 [![CI](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/ViniGHub/TicketFlow/actions/workflows/ci.yml)
-![Progresso do MVP](https://img.shields.io/badge/MVP-8%20de%2023%20etapas-orange)
+![Progresso do MVP](https://img.shields.io/badge/MVP-9%20de%2023%20etapas-orange)
 ![Node](https://img.shields.io/badge/Node-24_LTS-5FA04E?logo=nodedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 
@@ -28,8 +28,8 @@ Stripe Checkout · reserva de estoque atômica · webhooks idempotentes · trans
 > [!NOTE]
 > **Projeto de portfólio em construção.** O foco é qualidade de engenharia (concorrência,
 > idempotência, webhooks, CI/CD), não quantidade de funcionalidades. A fundação (monorepo, CI,
-> banco e autenticação) e o catálogo de eventos estão prontos; pedidos e pagamentos vêm nas
-> próximas etapas.
+> banco e autenticação), o catálogo de eventos e o núcleo de pedidos estão prontos; o pedido já
+> abre o Stripe Checkout, e a confirmação do pagamento pelo webhook vem na próxima etapa.
 
 > [!IMPORTANT]
 > O Stripe roda em **modo teste**: nenhuma cobrança real é feita. Para pagar, use o cartão
@@ -119,6 +119,7 @@ ticketflow/
 └── packages/
     ├── db/           # Prisma: schema, migrations, seed, client
     ├── domain/       # regras de negócio puras
+    ├── payments/     # adaptador do Stripe Checkout e gateway fake
     ├── contracts/    # schemas zod compartilhados
     ├── config/       # tsconfig, ESLint, Prettier, Vitest
     └── testing/      # helpers de Testcontainers
@@ -143,7 +144,7 @@ ticketflow/
 | 1. Fundação                 | Monorepo, CI, banco e autenticação        | ✅ concluída |
 | 2. Catálogo                 | Eventos e lotes                           | ✅ concluída |
 | 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ✅ concluída |
-| 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ⏳ próxima   |
+| 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ⏳ em curso  |
 | 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⬜ a fazer   |
 | 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer   |
 | 7. Produção                 | Observabilidade, deploy e segurança       | ⬜ a fazer   |
@@ -186,6 +187,17 @@ ticketflow/
   no domínio. A sessão do Stripe expira fora da transação; depois o pedido é travado e
   reconferido, então o estoque volta uma vez só, mesmo com expirações e cancelamentos
   simultâneos.
+
+</details>
+
+<details>
+<summary><b>O que já foi entregue na fase 4</b></summary>
+
+- ✅ **4.1 Stripe Checkout:** `POST /orders` abre a Checkout Session depois do commit da
+  reserva, com a `idempotencyKey` do pedido e parâmetros que só dependem dele, então a
+  retentativa recebe a mesma sessão. Se o Stripe falha, o pedido é cancelado e o estoque volta.
+  `GET /orders/:id` só para o dono. O adaptador fica num pacote próprio, reutilizável pelo
+  worker, e os testes usam um gateway fake.
 
 </details>
 
@@ -236,14 +248,28 @@ seed de novo (o Prisma 7 não roda o seed automaticamente no reset).
 </details>
 
 <details>
-<summary><b>💳 Webhooks do Stripe</b></summary>
+<summary><b>💳 Pagamento com o Stripe (modo teste)</b></summary>
 
-Em outro terminal, encaminhe os webhooks do Stripe para a API local:
+1. Crie uma conta no Stripe e, no modo teste do painel (Developers → API keys), copie a chave
+   secreta `sk_test_...` para `STRIPE_SECRET_KEY` no `.env`. Nunca use uma chave `sk_live_`.
+2. Em outro terminal, faça login na [Stripe CLI](https://stripe.com/docs/stripe-cli) e
+   encaminhe os webhooks para a API local:
 
-```bash
-stripe listen --forward-to localhost:3000/webhooks/stripe
-# copie o whsec_... exibido para STRIPE_WEBHOOK_SECRET no .env
-```
+   ```bash
+   stripe login
+   stripe listen --forward-to localhost:3000/webhooks/stripe
+   # copie o whsec_... exibido para STRIPE_WEBHOOK_SECRET no .env e reinicie a API
+   ```
+
+3. Pelo Swagger (http://localhost:3000/docs), faça login como `comprador@ticketflow.local`,
+   pegue o id de um lote em `GET /events/{id}` e crie o pedido em `POST /orders`. A resposta
+   traz `checkoutUrl`: abra no navegador e pague com o cartão `4242 4242 4242 4242`, qualquer
+   data futura e qualquer CVC.
+
+A sessão vale 35 minutos (o mínimo do Stripe mais uma folga). Pedidos de R$ 0,01 a R$ 0,49
+são recusados com 422, porque o Stripe só cobra a partir de R$ 0,50 em BRL. O endpoint
+`/webhooks/stripe`, que marca o pedido como pago, chega na etapa 4.2; até lá o
+`stripe listen` mostra os eventos, mas a API responde 404 a eles.
 
 </details>
 
@@ -302,6 +328,7 @@ As dependências são atualizadas pelo Dependabot.
 | **Paginação por cursor no catálogo**            | Não pula nem repete eventos durante a navegação e dispensa `COUNT(*)`; escritas travam o evento ([ADR 0004](docs/adr/0004-catalogo-cursor-e-trava-do-evento.md))                                  |
 | **Máquina de estados do pedido como tabela**    | Cada par origem → destino diz se vale e o que faz com o estoque; API, worker e webhook usam a mesma regra ([ADR 0005](docs/adr/0005-dominio-do-pedido.md))                                        |
 | **Compra trava o evento em modo compartilhado** | Compras não esperam umas pelas outras, mas um cancelamento de evento não passa no meio de uma compra ([ADR 0006](docs/adr/0006-criacao-de-pedido.md))                                             |
+| **Checkout Session depois do commit**           | Chamada ao Stripe fora da transação, com a chave e os parâmetros do pedido; se falha, o pedido é cancelado ([ADR 0008](docs/adr/0008-checkout-session.md))                                        |
 
 ## 🔮 Depois do MVP
 

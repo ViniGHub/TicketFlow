@@ -48,6 +48,7 @@ ticketflow/
 ├── packages/
 │   ├── db/                  # Prisma schema, migrations (com SQL manual dos CHECKs), client
 │   ├── domain/              # regras puras: máquina de estados, reserva/expiração, erros de domínio
+│   ├── payments/            # adaptador do Stripe (PaymentGateway) e gateway fake para os testes
 │   ├── contracts/           # schemas zod e tipos compartilhados (DTOs, payloads de jobs)
 │   ├── config/              # tsconfig base, ESLint (flat config), Prettier, Vitest preset
 │   └── testing/             # helpers de teste: Testcontainers (Postgres, Redis), limpeza de estado
@@ -147,14 +148,24 @@ Stripe confirmar ou recusar o pagamento.
    dentro do limite de `orders.total_cents` (`INTEGER`).
    Em **uma transação**: reserva o estoque (seção 6), cria `orders` (`PENDING`,
    `expires_at = now + RESERVATION_TTL`) e `order_items`, e faz commit.
-2. **Sessão Stripe** (fora da transação): a API cria a Checkout Session (`mode: payment`,
-   `line_items` a partir do pedido, `metadata.order_id`, `client_reference_id = order.id`,
-   `expires_at` do pedido respeitando o mínimo de 30 min do Stripe, `success_url` e
-   `cancel_url`), passando **`idempotencyKey: order.id`** para que uma retentativa não crie
-   uma segunda sessão. Grava `stripe_session_id` e devolve `{ orderId, checkoutUrl }`.
-   - Se a criação falhar, compensa: pedido `CANCELLED` e estoque devolvido.
+2. **Sessão Stripe** (fora da transação, `startCheckout` no domínio): a API cria a Checkout
+   Session (`mode: payment`, só cartão, `line_items` a partir de `order_items`,
+   `metadata.order_id`, `client_reference_id = order.id`, `expires_at` ajustado aos limites do
+   Stripe, `success_url` e `cancel_url` em `APP_URL/orders/<id>`), passando
+   **`idempotencyKey: order.id`** para que uma retentativa não crie uma segunda sessão. Todos os
+   parâmetros vêm do pedido gravado, nunca do relógio: o Stripe recusa a mesma chave com
+   parâmetros diferentes ([ADR 0008](docs/adr/0008-checkout-session.md)). Depois trava o pedido,
+   reconfere que continua `PENDING` sem sessão, grava `stripe_session_id` e devolve o pedido
+   com `checkoutUrl`.
+   - Se a criação falhar, compensa: trava o pedido e, se ele continua `PENDING` sem sessão,
+     marca `CANCELLED` e devolve o estoque. Resposta 503 `CHECKOUT_UNAVAILABLE`.
+   - Se o pedido saiu de `PENDING` enquanto a sessão era criada (cancelado, expirado), a sessão
+     nova é expirada e não fica gravada.
    - Se o processo cair entre o commit e a chamada ao Stripe, o pedido fica `PENDING` sem
-     `stripe_session_id`; o job de expiração trata esse caso (não há sessão para expirar).
+     `stripe_session_id`. O replay da mesma `Idempotency-Key` cria a sessão com a mesma chave;
+     sem replay, o job de expiração trata o caso (não há sessão para expirar).
+   - Replay de pedido que já tem sessão devolve a URL dela (`sessions.retrieve`); pedido que não
+     está `PENDING` volta com `checkoutUrl: null`.
 3. **Pagamento**: o usuário paga na página hospedada do Stripe.
 4. **Webhook** `POST /webhooks/stripe`:
    - Valida a assinatura usando o **corpo cru (raw body)** e `STRIPE_WEBHOOK_SECRET`.
@@ -191,9 +202,11 @@ Stripe confirmar ou recusar o pagamento.
 ### Sobre o TTL da reserva
 
 A Checkout Session do Stripe exige `expires_at` **entre 30 minutos e 24 horas** a partir da
-criação. `RESERVATION_TTL_MINUTES` tem padrão de **30**. Para uma reserva mais curta
-(ex.: 15 min), a sessão continua com 30 min e o job de expiração a encerra via
-`sessions.expire` quando o pedido vence. Como o job expira a sessão **antes** de devolver o
+criação. `RESERVATION_TTL_MINUTES` tem padrão de **30**. O adaptador ajusta o fim da reserva ao
+intervalo `[created_at + 35 min, created_at + 24 h − 5 min]`, contado da criação do pedido e com
+5 min de folga para a latência e a diferença de relógio. Com 30 min (ou uma reserva mais curta,
+como 15 min), a sessão vale 35 min, e o job de expiração a encerra via `sessions.expire` quando o
+pedido vence. Como o job expira a sessão **antes** de devolver o
 estoque, uma sessão expirada não pode mais ser paga com cartão.
 
 ### Caso de borda: pagamento chega depois da expiração
@@ -252,7 +265,8 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
   com a mesma chave correm juntas, a que perde (no `UNIQUE` ou por falta de estoque) consulta
   a chave de novo depois do rollback e devolve o pedido da outra.
 - **Chamadas ao Stripe**: toda chamada que cria algo usa `idempotencyKey` derivada do
-  pedido (`order.id`, `refund:<order.id>`).
+  pedido (`order.id`, `refund:<order.id>`), com parâmetros que dependem só do pedido gravado,
+  para a retentativa mandar exatamente a mesma requisição.
 - **Outbox (transactional outbox)**: nenhum código de API ou webhook enfileira direto no
   BullMQ. Ele grava uma linha em `outbox` na mesma transação da mudança de negócio. O
   **relay** (no worker) lê linhas com `published_at IS NULL` (`FOR UPDATE SKIP LOCKED`),
@@ -317,10 +331,13 @@ do front-end.
 
 **Pedidos** ([ADR 0006](docs/adr/0006-criacao-de-pedido.md)):
 
-- `POST /orders` recebe de 1 a 10 lotes sem repetição e responde 201 com o pedido `PENDING`
-  (até a etapa 4.1, sem `checkoutUrl`). Sem estoque, vendas fechadas ou evento fora de venda
-  → 409; acima de `max_per_order`, total grande demais ou `Idempotency-Key` com outro corpo
-  → 422; lote inexistente → 404.
+- `POST /orders` recebe de 1 a 10 lotes sem repetição e responde 201 com o pedido `PENDING` e
+  `checkoutUrl`, a página de pagamento do Stripe. Sem estoque, vendas fechadas ou evento fora de
+  venda → 409; acima de `max_per_order`, total acima de R$ 999.999,99 ou entre 1 e 49 centavos
+  (mínimo do Stripe) ou `Idempotency-Key` com outro corpo → 422; lote inexistente → 404; Stripe
+  indisponível → 503, com o pedido cancelado ([ADR 0008](docs/adr/0008-checkout-session.md)).
+- `GET /orders/:id` (só o dono; de outro comprador → 404 `ORDER_NOT_FOUND`) devolve o status
+  gravado, sem consultar o Stripe. Fica fora do rate limit: a página de sucesso faz polling.
 - `POST /orders/:id/cancel` (só o dono): expira a sessão no Stripe, depois devolve o estoque
   e responde 200 com o pedido `CANCELLED`. Pedido que não está `PENDING` → 409
   (`ORDER_NOT_CANCELLABLE`); sessão já paga → 409 (`ORDER_PAYMENT_COMPLETED`); pedido de
@@ -447,6 +464,8 @@ Registrados:
    sob concorrência, rate limit por usuário
 7. `0007-expiracao-e-cancelamento.md`: sessão expira fora da transação, depois trava e
    reconfere; mesma ordem no cancelamento
+8. `0008-checkout-session.md`: pacote `payments`, sessão criada depois do commit e gravada
+   com o pedido travado, compensação, parâmetros deterministas e limites de valor do Stripe
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

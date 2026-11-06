@@ -7,10 +7,18 @@ import type { OrderStatus } from './order-status.js';
 // HTTP de cada código: apps/api/src/common/error-status.ts.
 
 /**
- * Maior total que cabe em `orders.total_cents` (INTEGER do Postgres). Os limites do catálogo
- * permitem R$ 1 milhão por ingresso e 100 por pedido: um único item chega a 10^10 centavos.
+ * Maior total de um pedido: R$ 999.999,99, o maior valor que o Stripe aceita em qualquer forma
+ * de pagamento (8 dígitos; cartão aceita mais, Pix e boleto não). Cabe com folga em
+ * `orders.total_cents` (INTEGER). O catálogo aceita até esse valor por ingresso e 100 ingressos
+ * por pedido, então um único item pode passar do limite (ADR 0008).
  */
-export const MAX_ORDER_TOTAL_CENTS: Cents = 2_147_483_647;
+export const MAX_ORDER_TOTAL_CENTS: Cents = 99_999_999;
+
+/**
+ * Menor total de um pedido pago: R$ 0,50, o mínimo de cobrança do Stripe em BRL. Pedido de
+ * total zero (ingresso gratuito) também passa pelo Checkout, que não cobra nada.
+ */
+export const MIN_PAID_ORDER_TOTAL_CENTS: Cents = 50;
 
 export interface OrderItem {
   ticketTypeId: string;
@@ -132,6 +140,14 @@ export class OrderTotalTooLargeError extends DomainError {
   }
 }
 
+export class OrderTotalTooSmallError extends DomainError {
+  readonly code = 'ORDER_TOTAL_TOO_SMALL';
+
+  constructor(readonly totalCents: Cents) {
+    super('O total do pedido fica abaixo do valor mínimo de pagamento (R$ 0,50).');
+  }
+}
+
 export interface PricedItem {
   unitPriceCents: Cents;
   quantity: number;
@@ -155,6 +171,9 @@ export function calculateOrderTotal(items: readonly PricedItem[]): Cents {
   );
   if (total > MAX_ORDER_TOTAL_CENTS) {
     throw new OrderTotalTooLargeError(total);
+  }
+  if (total > 0 && total < MIN_PAID_ORDER_TOTAL_CENTS) {
+    throw new OrderTotalTooSmallError(total);
   }
   return total;
 }

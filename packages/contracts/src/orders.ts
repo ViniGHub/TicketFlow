@@ -76,3 +76,13 @@ export const orderResponseSchema = z.object({
   items: z.array(orderItemResponseSchema),
 });
 export type OrderResponse = z.infer<typeof orderResponseSchema>;
+
+/** `POST /orders`: o pedido e a página de pagamento do Stripe (ARCHITECTURE.md, seção 5). */
+export const createOrderResponseSchema = orderResponseSchema.extend({
+  /**
+   * Para onde levar o comprador. `null` quando o pedido não pode mais ser pago por ela: no
+   * replay de um pedido cancelado, expirado, pago ou com a sessão já encerrada.
+   */
+  checkoutUrl: z.url().nullable().meta({ example: 'https://checkout.stripe.com/c/pay/cs_test_a1' }),
+});
+export type CreateOrderResponse = z.infer<typeof createOrderResponseSchema>;

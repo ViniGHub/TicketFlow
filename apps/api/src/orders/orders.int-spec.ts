@@ -1,4 +1,8 @@
-import { type ErrorResponse, type OrderResponse } from '@ticketflow/contracts';
+import {
+  type CreateOrderResponse,
+  type ErrorResponse,
+  type OrderResponse,
+} from '@ticketflow/contracts';
 import { createPrismaClient } from '@ticketflow/db';
 import { ExpirationService } from '@ticketflow/domain';
 import { flushRedis, truncateAllTables } from '@ticketflow/testing';
@@ -8,7 +12,6 @@ import { call, type CookieJar, sessionFor, startTestApp, type TestApp } from '..
 import { DAY_MS, fixtures, fromNow, HOUR_MS } from '../../test/fixtures';
 
 import { PrismaUnitOfWork } from './persistence/prisma-unit-of-work';
-import { NullSessionExpirer } from './session-expirer';
 
 const databaseUrl = inject('databaseUrl');
 const redisUrl = inject('redisUrl');
@@ -33,6 +36,7 @@ beforeEach(async () => {
   await truncateAllTables(databaseUrl);
   // Zera o rate limit de POST /orders entre os testes.
   await flushRedis(redisUrl);
+  api.payments.reset();
 });
 
 interface Item {
@@ -115,6 +119,73 @@ describe('POST /orders', () => {
       where: { orderId: order.id, ticketTypeId: pista.id },
     });
     expect(item.unitPriceCents).toBe(8_000);
+  });
+
+  it('depois do commit, cria a Checkout Session com a chave do pedido e devolve a URL', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id, { priceCents: 8_000, total: 10 });
+
+    const response = await postOrder(buyer.jar, { items: [{ ticketTypeId: lot.id, quantity: 2 }] });
+
+    expect(response.status).toBe(201);
+    const order = await json<CreateOrderResponse>(response);
+    expect(api.payments.createCalls).toEqual([
+      {
+        idempotencyKey: order.id,
+        request: {
+          orderId: order.id,
+          lineItems: [{ name: 'Show de Teste – Pista', quantity: 2, unitPriceCents: 8_000 }],
+          expiresAt: new Date(order.expiresAt),
+          orderCreatedAt: new Date(order.createdAt),
+        },
+      },
+    ]);
+    const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(stored.stripeSessionId).toMatch(/^cs_test_fake_/);
+    expect(order.checkoutUrl).toBe(`https://checkout.stripe.test/c/pay/${stored.stripeSessionId}`);
+    expect(order.status).toBe('PENDING');
+  });
+
+  it('falha do Stripe: 503, pedido CANCELLED e o estoque de volta ao valor original', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id, { total: 10 });
+    const body = { items: [{ ticketTypeId: lot.id, quantity: 3 }] };
+    api.payments.failNextCreate();
+
+    const response = await postOrder(buyer.jar, body, 'compra-1');
+
+    expect(response.status).toBe(503);
+    expect((await errorOf(response)).code).toBe('CHECKOUT_UNAVAILABLE');
+    expect(await availableOf(lot.id)).toBe(10);
+    const stored = await prisma.order.findFirstOrThrow();
+    expect(stored).toMatchObject({ status: 'CANCELLED', stripeSessionId: null });
+
+    // A mesma chave depois da compensação devolve o pedido cancelado: nada é reservado de
+    // novo e nenhuma sessão é criada. Outra compra precisa de outra chave.
+    const retry = await postOrder(buyer.jar, body, 'compra-1');
+    expect(retry.status).toBe(201);
+    expect(await json<CreateOrderResponse>(retry)).toMatchObject({
+      id: stored.id,
+      status: 'CANCELLED',
+      checkoutUrl: null,
+    });
+    expect(api.payments.createCalls).toHaveLength(1);
+    expect(await availableOf(lot.id)).toBe(10);
+  });
+
+  it('total pago abaixo do mínimo do Stripe (R$ 0,50) responde 422 sem reservar', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id, { priceCents: 10, total: 10 });
+
+    const response = await postOrder(buyer.jar, { items: [{ ticketTypeId: lot.id, quantity: 2 }] });
+
+    expect(response.status).toBe(422);
+    expect((await errorOf(response)).code).toBe('ORDER_TOTAL_TOO_SMALL');
+    expect(await availableOf(lot.id)).toBe(10);
+    expect(api.payments.createCalls).toEqual([]);
   });
 
   it('50 compradores disputando 10 ingressos: exatamente 10 pedidos, em 10 rodadas seguidas', async () => {
@@ -285,15 +356,64 @@ describe('Idempotency-Key', () => {
     );
 
     expect(responses.map((response) => response.status)).toEqual([201, 201, 201, 201, 201]);
-    const ids = await Promise.all(
-      responses.map(async (response) => (await json<OrderResponse>(response)).id),
+    const bodies = await Promise.all(
+      responses.map((response) => json<CreateOrderResponse>(response)),
     );
+    const ids = bodies.map((body) => body.id);
     expect(new Set(ids).size).toBe(1);
     expect(responses.filter((r) => r.headers.get('idempotent-replayed') === 'true')).toHaveLength(
       4,
     );
     expect(await prisma.order.count()).toBe(1);
     expect(await availableOf(lot.id)).toBe(total - 1);
+    // Quem chegou antes de a sessão ser gravada tentou criá-la de novo, com a mesma chave: o
+    // Stripe devolve a mesma sessão, e todos recebem a mesma URL.
+    const [orderId] = ids;
+    expect(new Set(api.payments.createCalls.map((call) => call.idempotencyKey))).toEqual(
+      new Set([orderId]),
+    );
+    expect(api.payments.sessionCount).toBe(1);
+    const urls = bodies.map((body) => body.checkoutUrl);
+    expect(new Set(urls).size).toBe(1);
+    expect(urls[0]).toMatch(/^https:\/\/checkout\.stripe\.test\//);
+  });
+
+  it('retentativa de pedido sem sessão (o processo caiu) usa a mesma chave no Stripe', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id, { priceCents: 8_000, total: 10 });
+    const items = [{ ticketTypeId: lot.id, quantity: 2 }];
+    // O processo caiu logo depois de o Stripe criar a sessão, antes de gravá-la: o pedido
+    // ficou PENDING sem stripe_session_id.
+    const order = await createOrder(buyer.id, items, 'compra-1');
+    const lost = await api.payments.createCheckoutSession({
+      orderId: order.id,
+      lineItems: [{ name: 'Show de Teste – Pista', quantity: 2, unitPriceCents: 8_000 }],
+      expiresAt: order.expiresAt,
+      orderCreatedAt: order.createdAt,
+    });
+
+    const retry = await postOrder(buyer.jar, { items }, 'compra-1');
+
+    expect(retry.status).toBe(201);
+    expect(retry.headers.get('idempotent-replayed')).toBe('true');
+    const replayed = await json<CreateOrderResponse>(retry);
+    expect(replayed).toMatchObject({ id: order.id, status: 'PENDING', checkoutUrl: lost.url });
+    // Mesma chave e mesmos parâmetros: o Stripe devolve a sessão que já existia.
+    expect(api.payments.createCalls.map((call) => call.idempotencyKey)).toEqual([
+      order.id,
+      order.id,
+    ]);
+    expect(api.payments.sessionCount).toBe(1);
+    const stored = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(stored.stripeSessionId).toBe(lost.id);
+
+    // Com a sessão gravada, a próxima retentativa só busca a URL.
+    const again = await postOrder(buyer.jar, { items }, 'compra-1');
+    expect((await json<CreateOrderResponse>(again)).checkoutUrl).toBe(lost.url);
+    expect(api.payments.createCalls).toHaveLength(2);
+    expect(api.payments.retrieveCalls).toEqual([lost.id]);
+    expect(await availableOf(lot.id)).toBe(8);
   });
 
   it('a chave vale por comprador', async () => {
@@ -326,6 +446,68 @@ describe('Idempotency-Key', () => {
   });
 });
 
+describe('GET /orders/:id', () => {
+  function getOrder(jar: CookieJar | undefined, orderId: string): Promise<Response> {
+    return call(api.url, `/orders/${orderId}`, { ...(jar && { jar }) });
+  }
+
+  it('o dono vê o pedido; outro comprador recebe 404, como se ele não existisse', async () => {
+    const [owner, intruder] = [await createBuyer(), await createBuyer()];
+    const event = await createEvent();
+    const lot = await createLot(event.id, { priceCents: 8_000, total: 10 });
+    const order = await createOrder(owner.id, [{ ticketTypeId: lot.id, quantity: 1 }]);
+
+    const own = await getOrder(owner.jar, order.id);
+    expect(own.status).toBe(200);
+    expect(await json<OrderResponse>(own)).toMatchObject({
+      id: order.id,
+      status: 'PENDING',
+      totalCents: 8_000,
+    });
+
+    const fromIntruder = await getOrder(intruder.jar, order.id);
+    expect(fromIntruder.status).toBe(404);
+    expect((await errorOf(fromIntruder)).code).toBe('ORDER_NOT_FOUND');
+    const missing = await getOrder(owner.jar, '0193a4f2-0000-7000-8000-000000000000');
+    expect(missing.status).toBe(404);
+    expect((await errorOf(missing)).code).toBe('ORDER_NOT_FOUND');
+    expect((await getOrder(owner.jar, 'nao-e-uuid')).status).toBe(400);
+  });
+
+  it('mostra o status gravado, sem consultar o Stripe', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id);
+    const order = await createOrder(buyer.id, [{ ticketTypeId: lot.id, quantity: 1 }]);
+    await prisma.order.update({ where: { id: order.id }, data: { status: 'PAID' } });
+
+    const response = await getOrder(buyer.jar, order.id);
+
+    expect((await json<OrderResponse>(response)).status).toBe('PAID');
+    expect(api.payments.retrieveCalls).toEqual([]);
+  });
+
+  it('o polling da página de sucesso não conta no limite de 20 pedidos por minuto', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id);
+    const order = await createOrder(buyer.id, [{ ticketTypeId: lot.id, quantity: 1 }]);
+
+    for (let attempt = 1; attempt <= 25; attempt += 1) {
+      const response = await getOrder(buyer.jar, order.id);
+      expect({ attempt, status: response.status }).toEqual({ attempt, status: 200 });
+      await response.json();
+    }
+    const created = await postOrder(buyer.jar, { items: [{ ticketTypeId: lot.id, quantity: 1 }] });
+    expect(created.status).toBe(201);
+  });
+
+  it('sem sessão responde 401', async () => {
+    const response = await getOrder(undefined, '0193a4f2-0000-7000-8000-000000000000');
+    expect(response.status).toBe(401);
+  });
+});
+
 describe('POST /orders/:id/cancel', () => {
   function cancelRequest(jar: CookieJar | undefined, orderId: string): Promise<Response> {
     return call(api.url, `/orders/${orderId}/cancel`, { method: 'POST', ...(jar && { jar }) });
@@ -350,6 +532,29 @@ describe('POST /orders/:id/cancel', () => {
     expect(await availableOf(lot.id)).toBe(10);
     const stored = await prisma.order.findUniqueOrThrow({ where: { id: created.id } });
     expect(stored.status).toBe('CANCELLED');
+    // A sessão expira no Stripe antes de o estoque voltar: não pode mais ser paga.
+    const sessionId = stored.stripeSessionId ?? '';
+    expect(api.payments.expireCalls).toEqual([sessionId]);
+    expect(api.payments.session(sessionId)).toMatchObject({ status: 'expired', url: null });
+  });
+
+  it('sessão já paga: 409 ORDER_PAYMENT_COMPLETED e o estoque continua reservado', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id, { total: 10 });
+    const created = await json<CreateOrderResponse>(
+      await postOrder(buyer.jar, { items: [{ ticketTypeId: lot.id, quantity: 2 }] }),
+    );
+    const stored = await prisma.order.findUniqueOrThrow({ where: { id: created.id } });
+    api.payments.complete(stored.stripeSessionId ?? '');
+
+    const response = await cancelRequest(buyer.jar, created.id);
+
+    expect(response.status).toBe(409);
+    expect((await errorOf(response)).code).toBe('ORDER_PAYMENT_COMPLETED');
+    expect(await availableOf(lot.id)).toBe(8);
+    const after = await prisma.order.findUniqueOrThrow({ where: { id: created.id } });
+    expect(after.status).toBe('PENDING');
   });
 
   it('cancelar duas vezes: a segunda responde 409 e o estoque volta uma vez só', async () => {
@@ -412,10 +617,7 @@ describe('POST /orders/:id/cancel', () => {
     const lot = await createLot(event.id, { total: 10 });
     const order = await createOrder(buyer.id, [{ ticketTypeId: lot.id, quantity: 2 }]);
     await prisma.order.update({ where: { id: order.id }, data: { expiresAt: fromNow(-60_000) } });
-    const expiration = new ExpirationService(
-      new PrismaUnitOfWork(prisma),
-      new NullSessionExpirer(),
-    );
+    const expiration = new ExpirationService(new PrismaUnitOfWork(prisma), api.payments);
 
     const [response, summary] = await Promise.all([
       cancelRequest(buyer.jar, order.id),

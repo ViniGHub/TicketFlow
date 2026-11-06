@@ -6,8 +6,8 @@ import { z } from 'zod';
 
 /** Limites superiores: evitam abuso e estouro do `int4` do Postgres. */
 export const CATALOG_LIMITS = {
-  /** R$ 1.000.000,00 */
-  maxPriceCents: 100_000_000,
+  /** R$ 999.999,99: o maior total de pedido que o Stripe aceita (ADR 0008). */
+  maxPriceCents: 99_999_999,
   maxTicketsPerType: 100_000,
   maxPerOrder: 100,
   defaultPageSize: 20,

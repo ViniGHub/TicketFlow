@@ -24,7 +24,7 @@ function setupSwagger(app: NestExpressApplication): void {
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' });
 }
 
-/** Cria a API configurada. Usada pelo main.ts e pelos testes de integração. */
+/** Cria a API configurada. Usada pelo main.ts. */
 export async function createApp(env: ApiEnv): Promise<NestExpressApplication> {
   // Adapter importado estaticamente: sem isso o Nest carrega o Express sob demanda e o
   // carregamento a frio estoura o timeout dos testes com a máquina sob carga.
@@ -33,6 +33,15 @@ export async function createApp(env: ApiEnv): Promise<NestExpressApplication> {
     new ExpressAdapter(),
     { bufferLogs: true },
   );
+  configureApp(app, env);
+  return app;
+}
+
+/**
+ * Middlewares, CORS e Swagger. Separado do `createApp` para os testes de integração montarem
+ * a mesma API a partir de um módulo de teste, com o gateway de pagamento trocado.
+ */
+export function configureApp(app: NestExpressApplication, env: ApiEnv): void {
   app.useLogger(app.get(Logger));
 
   if (env.TRUST_PROXY) {
@@ -44,6 +53,4 @@ export async function createApp(env: ApiEnv): Promise<NestExpressApplication> {
   app.enableCors({ origin: new URL(env.APP_URL).origin, credentials: true });
   app.enableShutdownHooks();
   setupSwagger(app);
-
-  return app;
 }

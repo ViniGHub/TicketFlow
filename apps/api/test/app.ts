@@ -1,14 +1,18 @@
-// Helpers dos testes de integração da API: sobem a aplicação real (createApp) numa porta
-// livre, apontando para o Postgres e o Redis do Testcontainers.
+// Helpers dos testes de integração da API: sobem a aplicação real numa porta livre,
+// apontando para o Postgres e o Redis do Testcontainers.
 import { JwtService } from '@nestjs/jwt';
-import { type NestExpressApplication } from '@nestjs/platform-express';
+import { ExpressAdapter, type NestExpressApplication } from '@nestjs/platform-express';
+import { Test } from '@nestjs/testing';
 import { type Role } from '@ticketflow/contracts';
+import { FakePaymentGateway } from '@ticketflow/payments/testing';
 import { inject } from 'vitest';
 
-import { createApp } from '../src/app.factory';
+import { configureApp } from '../src/app.factory';
+import { AppModule } from '../src/app.module';
 import { type AccessTokenPayload } from '../src/auth/auth.service';
 import { ACCESS_COOKIE, ACCESS_TOKEN_TTL_SECONDS } from '../src/auth/session';
 import { type ApiEnv, parseApiEnv } from '../src/config/env';
+import { PAYMENT_GATEWAY } from '../src/payments/payments.module';
 
 export const FRONT_ORIGIN = 'http://localhost:3001';
 
@@ -29,14 +33,31 @@ export function testEnv(overrides: Record<string, string> = {}): ApiEnv {
 export interface TestApp {
   app: NestExpressApplication;
   url: string;
+  /** O gateway de pagamento da app: um fake em memória, nunca o Stripe. */
+  payments: FakePaymentGateway;
   close(): Promise<void>;
 }
 
-export async function startTestApp(env: ApiEnv = testEnv()): Promise<TestApp> {
-  const app = await createApp(env);
+/**
+ * A mesma API do main.ts (AppModule e configureApp), com o `PaymentGateway` trocado pelo
+ * `FakePaymentGateway`: nenhum teste fala com o Stripe.
+ */
+export async function startTestApp(
+  env: ApiEnv = testEnv(),
+  payments = new FakePaymentGateway(),
+): Promise<TestApp> {
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule.register(env)] })
+    .overrideProvider(PAYMENT_GATEWAY)
+    .useValue(payments)
+    .compile();
+  // Adapter explícito pelo mesmo motivo do createApp (carregamento a frio do Express).
+  const app = moduleRef.createNestApplication<NestExpressApplication>(new ExpressAdapter(), {
+    bufferLogs: true,
+  });
+  configureApp(app, env);
   await app.listen(0, '127.0.0.1');
   const address = app.getHttpServer().address() as { port: number };
-  return { app, url: `http://127.0.0.1:${address.port}`, close: () => app.close() };
+  return { app, url: `http://127.0.0.1:${address.port}`, payments, close: () => app.close() };
 }
 
 /** Guarda os cookies das respostas e os devolve nas próximas requisições, como um navegador. */

@@ -3,6 +3,10 @@
 import { type EventStatus } from './catalog.js';
 import { type NewOrder, type Order } from './order.js';
 import {
+  type CheckoutGateway,
+  type CheckoutSession,
+  type CheckoutSessionRequest,
+  type CheckoutSessionState,
   type ExpireCheckoutSessionResult,
   IdempotencyKeyTakenError,
   type PurchasableTicketType,
@@ -26,10 +30,87 @@ export class FakeSessionExpirer implements SessionExpirer {
   }
 }
 
+/**
+ * Gateway de pagamento de mentira para `startCheckout`. Como o Stripe com a chave
+ * `order.id`, o mesmo pedido sempre recebe a mesma sessão. Erros configurados são lançados.
+ */
+export class FakeCheckoutGateway implements CheckoutGateway {
+  created: CheckoutSessionRequest[] = [];
+  retrieved: string[] = [];
+  expired: string[] = [];
+  sessions = new Map<string, CheckoutSessionState>();
+  createError?: Error;
+  retrieveError?: Error;
+  expireError?: Error;
+  /** Roda a cada chamada, antes de responder (ex.: outra transação muda o pedido). */
+  onCall?: (method: 'create' | 'retrieve' | 'expire') => void;
+
+  static sessionIdOf(orderId: string): string {
+    return `cs_test_${orderId}`;
+  }
+
+  /** Grava uma sessão já existente, como se tivesse sido criada antes. */
+  addSession(orderId: string, overrides: Partial<CheckoutSessionState> = {}): CheckoutSessionState {
+    const id = FakeCheckoutGateway.sessionIdOf(orderId);
+    const session: CheckoutSessionState = {
+      id,
+      orderId,
+      status: 'open',
+      paymentStatus: 'unpaid',
+      paymentIntentId: null,
+      url: `https://checkout.stripe.test/${id}`,
+      ...overrides,
+    };
+    this.sessions.set(id, session);
+    return session;
+  }
+
+  createCheckoutSession(request: CheckoutSessionRequest): Promise<CheckoutSession> {
+    this.onCall?.('create');
+    this.created.push(request);
+    if (this.createError) {
+      return Promise.reject(this.createError);
+    }
+    const session =
+      this.sessions.get(FakeCheckoutGateway.sessionIdOf(request.orderId)) ??
+      this.addSession(request.orderId);
+    return Promise.resolve({ id: session.id, url: session.url ?? '' });
+  }
+
+  retrieveCheckoutSession(sessionId: string): Promise<CheckoutSessionState> {
+    this.onCall?.('retrieve');
+    this.retrieved.push(sessionId);
+    const session = this.sessions.get(sessionId);
+    if (this.retrieveError || !session) {
+      return Promise.reject(this.retrieveError ?? new Error(`Sessão inexistente: ${sessionId}`));
+    }
+    return Promise.resolve(session);
+  }
+
+  expireCheckoutSession(sessionId: string): Promise<ExpireCheckoutSessionResult> {
+    this.onCall?.('expire');
+    this.expired.push(sessionId);
+    if (this.expireError) {
+      return Promise.reject(this.expireError);
+    }
+    const session = this.sessions.get(sessionId);
+    if (session?.status === 'complete') {
+      return Promise.resolve('complete');
+    }
+    if (session) {
+      session.status = 'expired';
+      session.url = null;
+    }
+    return Promise.resolve('expired');
+  }
+}
+
 export const FAKE_NOW = new Date('2026-11-20T12:00:00Z');
 
 export interface StoredTicketType extends PurchasableTicketType {
   available: number;
+  name: string;
+  eventTitle: string;
 }
 
 /**
@@ -46,6 +127,8 @@ export class FakeDatabase implements UnitOfWork {
   releases: { ticketTypeId: string; quantity: number }[] = [];
   locks: string[] = [];
   runs = 0;
+  /** Transações abertas agora: chamadas ao gateway precisam acontecer com zero (regra 8). */
+  openTransactions = 0;
   /** Simula outra requisição gravando um pedido com a mesma chave antes deste `create`. */
   beforeCreate?: (order: NewOrder) => void;
   /** Roda uma vez, antes da primeira reserva (ex.: outra compra leva o estoque). */
@@ -65,6 +148,8 @@ export class FakeDatabase implements UnitOfWork {
       salesEnd: new Date('2026-12-01T00:00:00Z'),
       maxPerOrder: 4,
       available: 10,
+      name: 'Pista',
+      eventTitle: 'Show de Teste',
       event: { id: 'evento-1', status },
       ...rest,
     });
@@ -109,6 +194,7 @@ export class FakeDatabase implements UnitOfWork {
 
   async run<T>(work: (repositories: TransactionalRepositories) => Promise<T>): Promise<T> {
     this.runs += 1;
+    this.openTransactions += 1;
     const snapshot = {
       ticketTypes: new Map([...this.ticketTypes].map(([id, lot]) => [id, { ...lot }])),
       orders: [...this.orders],
@@ -119,6 +205,8 @@ export class FakeDatabase implements UnitOfWork {
       this.ticketTypes = snapshot.ticketTypes;
       this.orders = snapshot.orders;
       throw error;
+    } finally {
+      this.openTransactions -= 1;
     }
   }
 
@@ -152,6 +240,13 @@ export class FakeDatabase implements UnitOfWork {
             ids.flatMap((id) => {
               const lot = this.ticketTypes.get(id);
               return lot ? [lot] : [];
+            }),
+          ),
+        findLabels: (ids) =>
+          Promise.resolve(
+            ids.flatMap((id) => {
+              const lot = this.ticketTypes.get(id);
+              return lot ? [{ id, name: lot.name, eventTitle: lot.eventTitle }] : [];
             }),
           ),
       },

@@ -1,20 +1,15 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { PrismaUnitOfWork } from './persistence/prisma-unit-of-work';
-import { NullSessionExpirer, SESSION_EXPIRER } from './session-expirer';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, PaymentsModule],
   controllers: [OrdersController],
-  providers: [
-    OrdersService,
-    PrismaUnitOfWork,
-    // Até a etapa 4.1 não há sessões no Stripe para expirar.
-    { provide: SESSION_EXPIRER, useClass: NullSessionExpirer },
-  ],
+  providers: [OrdersService, PrismaUnitOfWork],
 })
 export class OrdersModule {}

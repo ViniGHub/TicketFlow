@@ -11,6 +11,7 @@ import {
   type OutboxMessage,
   type OutboxRepository,
   type PurchasableTicketType,
+  type TicketTypeLabel,
 } from '@ticketflow/domain';
 
 import { toDomainOrder, withItems } from '../orders.mapper';
@@ -44,6 +45,14 @@ export class PrismaCatalogRepository implements CatalogRepository {
         event: { select: { id: true, status: true } },
       },
     });
+  }
+
+  async findLabels(ticketTypeIds: readonly string[]): Promise<TicketTypeLabel[]> {
+    const rows = await this.tx.ticketType.findMany({
+      where: { id: { in: [...ticketTypeIds] } },
+      select: { id: true, name: true, event: { select: { title: true } } },
+    });
+    return rows.map(({ id, name, event }) => ({ id, name, eventTitle: event.title }));
   }
 }
 

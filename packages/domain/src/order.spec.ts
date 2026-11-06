@@ -10,7 +10,9 @@ import {
   InsufficientStockError,
   MAX_ORDER_TOTAL_CENTS,
   MaxPerOrderExceededError,
+  MIN_PAID_ORDER_TOTAL_CENTS,
   OrderTotalTooLargeError,
+  OrderTotalTooSmallError,
   type PurchaseCheck,
   SalesWindowClosedError,
 } from './order.js';
@@ -40,7 +42,12 @@ describe('total do pedido', () => {
     expect(() => calculateOrderTotal([{ unitPriceCents: 1_000, quantity }])).toThrow(RangeError);
   });
 
-  it('aceita total exatamente no limite de orders.total_cents', () => {
+  it('o limite é o maior valor que o Stripe aceita em qualquer forma de pagamento', () => {
+    expect(MAX_ORDER_TOTAL_CENTS).toBe(99_999_999);
+    expect(MIN_PAID_ORDER_TOTAL_CENTS).toBe(50);
+  });
+
+  it('aceita total exatamente no limite', () => {
     expect(calculateOrderTotal([{ unitPriceCents: MAX_ORDER_TOTAL_CENTS, quantity: 1 }])).toBe(
       MAX_ORDER_TOTAL_CENTS,
     );
@@ -55,15 +62,30 @@ describe('total do pedido', () => {
     ).toThrow(OrderTotalTooLargeError);
   });
 
-  it('recusa o maior pedido que o catálogo permite (R$ 1 milhão × 100)', () => {
+  it('recusa o maior pedido que o catálogo permite (R$ 999.999,99 × 100)', () => {
     let caught: unknown;
     try {
-      calculateOrderTotal([{ unitPriceCents: 100_000_000, quantity: 100 }]);
+      calculateOrderTotal([{ unitPriceCents: 99_999_999, quantity: 100 }]);
     } catch (error) {
       caught = error;
     }
     expect(caught).toBeInstanceOf(OrderTotalTooLargeError);
-    expect(caught).toMatchObject({ code: 'ORDER_TOTAL_TOO_LARGE', totalCents: 10_000_000_000 });
+    expect(caught).toMatchObject({ code: 'ORDER_TOTAL_TOO_LARGE', totalCents: 9_999_999_900 });
+  });
+
+  it('aceita o mínimo de cobrança do Stripe em BRL', () => {
+    expect(calculateOrderTotal([{ unitPriceCents: 25, quantity: 2 }])).toBe(50);
+  });
+
+  it.each([1, 49])('recusa total pago de %s centavo(s), abaixo do mínimo do Stripe', (total) => {
+    let caught: unknown;
+    try {
+      calculateOrderTotal([{ unitPriceCents: total, quantity: 1 }]);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(OrderTotalTooSmallError);
+    expect(caught).toMatchObject({ code: 'ORDER_TOTAL_TOO_SMALL', totalCents: total });
   });
 });
 
@@ -143,6 +165,7 @@ describe('erros do pedido', () => {
     [new EventNotPublishedError('evento-1'), 'EVENT_NOT_PUBLISHED'],
     [new IdempotencyConflictError(), 'IDEMPOTENCY_CONFLICT'],
     [new OrderTotalTooLargeError(MAX_ORDER_TOTAL_CENTS + 1), 'ORDER_TOTAL_TOO_LARGE'],
+    [new OrderTotalTooSmallError(1), 'ORDER_TOTAL_TOO_SMALL'],
   ] as const)('%s tem o código %s', (error, code) => {
     expect(error).toBeInstanceOf(DomainError);
     expect(error.code).toBe(code);

@@ -34,6 +34,7 @@ export const DOMAIN_ERROR_STATUS: Readonly<Record<string, HttpStatus>> = {
   // 422: o pedido quebra uma regra (quantidade, total, Idempotency-Key com outro corpo).
   MAX_PER_ORDER_EXCEEDED: HttpStatus.UNPROCESSABLE_ENTITY,
   ORDER_TOTAL_TOO_LARGE: HttpStatus.UNPROCESSABLE_ENTITY,
+  ORDER_TOTAL_TOO_SMALL: HttpStatus.UNPROCESSABLE_ENTITY,
   IDEMPOTENCY_CONFLICT: HttpStatus.UNPROCESSABLE_ENTITY,
 };
 

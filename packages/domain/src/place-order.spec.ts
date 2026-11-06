@@ -103,7 +103,7 @@ describe('criação de pedido', () => {
       'total acima do limite',
       () => {
         const db = setup();
-        db.addTicketType(lotA, { priceCents: 2_147_483_647 });
+        db.addTicketType(lotA, { priceCents: 99_999_999 });
         return db;
       },
       OrderTotalTooLargeError,

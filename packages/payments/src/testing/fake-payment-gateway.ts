@@ -93,7 +93,7 @@ export class FakePaymentGateway implements PaymentGateway {
       throw failure;
     }
 
-    const params = JSON.stringify(request);
+    const params = canonicalJson(request);
     const previous = this.byIdempotencyKey.get(idempotencyKey);
     if (previous) {
       if (previous.params !== params) {
@@ -160,6 +160,15 @@ export class FakePaymentGateway implements PaymentGateway {
     // Como no Stripe: a resposta salva da criação continua com a URL.
     return { id: session.id, url: `https://checkout.stripe.test/c/pay/${session.id}` };
   }
+}
+
+/** JSON com as chaves em ordem: o Stripe compara os parâmetros, não a ordem em que vieram. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    nested !== null && typeof nested === 'object' && !Array.isArray(nested)
+      ? Object.fromEntries(Object.entries(nested).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : nested,
+  );
 }
 
 function missing(sessionId: string): Error {

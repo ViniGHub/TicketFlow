@@ -25,6 +25,25 @@ describe('FakePaymentGateway', () => {
     ]);
   });
 
+  it('compara os parâmetros, não a ordem das chaves', async () => {
+    const gateway = new FakePaymentGateway();
+    const first = await gateway.createCheckoutSession(request);
+
+    const { orderCreatedAt, expiresAt, lineItems, orderId } = request;
+    const reordered = await gateway.createCheckoutSession({
+      orderCreatedAt,
+      expiresAt,
+      lineItems: lineItems.map(({ quantity, unitPriceCents, name }) => ({
+        quantity,
+        unitPriceCents,
+        name,
+      })),
+      orderId,
+    });
+
+    expect(reordered).toEqual(first);
+  });
+
   it('a mesma chave com outros parâmetros é recusada', async () => {
     const gateway = new FakePaymentGateway();
     await gateway.createCheckoutSession(request);

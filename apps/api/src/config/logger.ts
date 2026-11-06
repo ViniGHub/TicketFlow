@@ -28,7 +28,12 @@ export function loggerParams(env: ApiEnv): Params {
       quietReqLogger: true,
       customAttributeKeys: { reqId: 'request_id' },
       redact: {
-        paths: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'],
+        paths: [
+          'req.headers.cookie',
+          'req.headers.authorization',
+          'req.headers["stripe-signature"]',
+          'res.headers["set-cookie"]',
+        ],
         censor: '[REDACTED]',
       },
       // Health checks de orquestrador chegam a cada poucos segundos: não poluem o log.

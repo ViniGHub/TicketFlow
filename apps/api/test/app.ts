@@ -7,7 +7,7 @@ import { type Role } from '@ticketflow/contracts';
 import { FakePaymentGateway } from '@ticketflow/payments/testing';
 import { inject } from 'vitest';
 
-import { configureApp } from '../src/app.factory';
+import { APP_OPTIONS, configureApp } from '../src/app.factory';
 import { AppModule } from '../src/app.module';
 import { type AccessTokenPayload } from '../src/auth/auth.service';
 import { ACCESS_COOKIE, ACCESS_TOKEN_TTL_SECONDS } from '../src/auth/session';
@@ -51,9 +51,10 @@ export async function startTestApp(
     .useValue(payments)
     .compile();
   // Adapter explícito pelo mesmo motivo do createApp (carregamento a frio do Express).
-  const app = moduleRef.createNestApplication<NestExpressApplication>(new ExpressAdapter(), {
-    bufferLogs: true,
-  });
+  const app = moduleRef.createNestApplication<NestExpressApplication>(
+    new ExpressAdapter(),
+    APP_OPTIONS,
+  );
   configureApp(app, env);
   await app.listen(0, '127.0.0.1');
   const address = app.getHttpServer().address() as { port: number };

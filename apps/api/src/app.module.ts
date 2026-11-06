@@ -16,6 +16,7 @@ import { OrdersModule } from './orders/orders.module';
 import { REDIS, RedisModule } from './redis/redis.module';
 import { OriginGuard } from './security/origin.guard';
 import { RedisThrottlerStorage } from './security/redis-throttler.storage';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({})
 export class AppModule {
@@ -39,6 +40,7 @@ export class AppModule {
         AuthModule,
         EventsModule,
         OrdersModule,
+        WebhooksModule,
       ],
       providers: [
         { provide: APP_FILTER, useClass: HttpExceptionFilter },

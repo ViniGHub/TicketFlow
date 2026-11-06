@@ -7,6 +7,8 @@ import {
   PrismaInventoryRepository,
   PrismaOrderRepository,
   PrismaOutboxRepository,
+  PrismaStripeEventRepository,
+  PrismaTicketRepository,
 } from './prisma-repositories';
 
 /**
@@ -29,6 +31,8 @@ export class PrismaUnitOfWork implements UnitOfWork {
           inventory: new PrismaInventoryRepository(tx),
           orders: new PrismaOrderRepository(tx),
           outbox: new PrismaOutboxRepository(tx),
+          tickets: new PrismaTicketRepository(tx),
+          stripeEvents: new PrismaStripeEventRepository(tx),
         }),
       TRANSACTION_OPTIONS,
     );

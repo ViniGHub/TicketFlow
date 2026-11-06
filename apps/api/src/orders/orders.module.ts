@@ -11,5 +11,7 @@ import { PrismaUnitOfWork } from './persistence/prisma-unit-of-work';
   imports: [AuthModule, PaymentsModule],
   controllers: [OrdersController],
   providers: [OrdersService, PrismaUnitOfWork],
+  // O webhook do Stripe (WebhooksModule) grava pela mesma unidade de trabalho.
+  exports: [PrismaUnitOfWork],
 })
 export class OrdersModule {}

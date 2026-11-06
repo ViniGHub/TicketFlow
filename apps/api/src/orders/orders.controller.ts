@@ -16,6 +16,7 @@ import {
   ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
   ApiUnprocessableEntityResponse,
@@ -24,6 +25,8 @@ import { Throttle } from '@nestjs/throttler';
 import {
   type CreateOrderRequest,
   createOrderRequestSchema,
+  type CreateOrderResponse,
+  createOrderResponseSchema,
   idempotencyKeySchema,
   ORDER_LIMITS,
   type OrderResponse,
@@ -68,8 +71,11 @@ export class OrdersController {
   })
   @ApiBody({ schema: openApiSchema(createOrderRequestSchema) })
   @ApiCreatedResponse({
-    description: 'Pedido PENDING com o estoque reservado até `expiresAt`.',
-    schema: orderSchema,
+    description:
+      'Pedido PENDING com o estoque reservado até `expiresAt` e a página de pagamento do ' +
+      'Stripe em `checkoutUrl`. No replay, o pedido como está agora; `checkoutUrl` é nulo ' +
+      'se ele não pode mais ser pago.',
+    schema: openApiSchema(createOrderResponseSchema, 'output'),
   })
   @ApiConflictResponse({
     description: 'Sem estoque, vendas fechadas ou evento fora de venda.',
@@ -78,13 +84,16 @@ export class OrdersController {
     description: 'Acima do limite por pedido do lote, total grande demais ou chave repetida.',
   })
   @ApiTooManyRequestsResponse({ description: 'Mais de 20 pedidos por minuto deste usuário.' })
+  @ApiServiceUnavailableResponse({
+    description: 'O Stripe falhou ao criar a sessão: o pedido foi cancelado e o estoque voltou.',
+  })
   async create(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(createOrderRequestSchema)) body: CreateOrderRequest,
     @IdempotencyKeyHeader(new ZodValidationPipe(idempotencyKeySchema, IDEMPOTENCY_HEADER))
     idempotencyKey: string | undefined,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<OrderResponse> {
+  ): Promise<CreateOrderResponse> {
     const { order, replayed } = await this.orders.create(user.id, body, idempotencyKey);
     if (replayed) {
       response.setHeader('Idempotent-Replayed', 'true');

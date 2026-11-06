@@ -1,20 +1,21 @@
 import { createPrismaClient } from '@ticketflow/db';
 import { ExpirationService, type Order } from '@ticketflow/domain';
+import { FakePaymentGateway } from '@ticketflow/payments/testing';
 import { truncateAllTables } from '@ticketflow/testing';
 import { afterAll, beforeEach, describe, expect, inject, it } from 'vitest';
 
 import { fixtures, fromNow } from '../../test/fixtures';
 
 import { PrismaUnitOfWork } from './persistence/prisma-unit-of-work';
-import { NullSessionExpirer } from './session-expirer';
 
 // ExpirationService (packages/domain) contra o Postgres real, com os repositórios Prisma da
-// API. O job que o chama a cada minuto é da etapa 5.3.
+// API. O job que o chama a cada minuto é da etapa 5.3. Os pedidos daqui não têm sessão no
+// Stripe: o fake só está lá para a assinatura.
 
 const databaseUrl = inject('databaseUrl');
 const prisma = createPrismaClient(databaseUrl);
 const { createUser, createEvent, createLot, createOrder, availableOf } = fixtures(prisma);
-const expiration = new ExpirationService(new PrismaUnitOfWork(prisma), new NullSessionExpirer());
+const expiration = new ExpirationService(new PrismaUnitOfWork(prisma), new FakePaymentGateway());
 
 const MINUTE_MS = 60_000;
 

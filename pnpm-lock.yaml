@@ -230,6 +230,9 @@ importers:
       '@ticketflow/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@ticketflow/payments':
+        specifier: workspace:*
+        version: link:../../packages/payments
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7

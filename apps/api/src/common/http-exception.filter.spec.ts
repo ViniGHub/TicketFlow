@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
-import { DomainError } from '@ticketflow/domain';
+import { CheckoutUnavailableError, DomainError } from '@ticketflow/domain';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -39,11 +39,29 @@ describe('toErrorResponse', () => {
     });
   });
 
-  it('todo código mapeado responde 4xx', () => {
-    for (const status of Object.values(DOMAIN_ERROR_STATUS)) {
-      expect(status).toBeGreaterThanOrEqual(400);
-      expect(status).toBeLessThan(500);
+  it('todo código mapeado responde 4xx, exceto o Stripe indisponível (503)', () => {
+    for (const [code, status] of Object.entries(DOMAIN_ERROR_STATUS)) {
+      const value: number = status;
+      if (code === 'CHECKOUT_UNAVAILABLE') {
+        expect(value).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+        continue;
+      }
+      expect({ code, clientError: value >= 400 && value < 500 }).toEqual({
+        code,
+        clientError: true,
+      });
     }
+  });
+
+  it('Stripe indisponível vira 503 com o código, sem expor a causa', () => {
+    const error = new CheckoutUnavailableError(new Error('sk_test_segredo na mensagem'));
+
+    expect(toErrorResponse(error, 'req-1')).toEqual({
+      statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+      code: 'CHECKOUT_UNAVAILABLE',
+      message: error.message,
+      requestId: 'req-1',
+    });
   });
 
   it('erro de validação vira 400 com os detalhes', () => {

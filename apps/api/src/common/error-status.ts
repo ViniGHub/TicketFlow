@@ -36,6 +36,8 @@ export const DOMAIN_ERROR_STATUS: Readonly<Record<string, HttpStatus>> = {
   ORDER_TOTAL_TOO_LARGE: HttpStatus.UNPROCESSABLE_ENTITY,
   ORDER_TOTAL_TOO_SMALL: HttpStatus.UNPROCESSABLE_ENTITY,
   IDEMPOTENCY_CONFLICT: HttpStatus.UNPROCESSABLE_ENTITY,
+  // 503: o Stripe falhou; como com o Redis fora, o cliente pode tentar de novo (ADR 0008).
+  CHECKOUT_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
 };
 
 /** Código usado quando uma HttpException não informa um `code` próprio. */

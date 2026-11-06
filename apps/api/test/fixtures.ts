@@ -4,6 +4,7 @@ import { type PrismaClient } from '@ticketflow/db';
 import { type Order, placeOrder } from '@ticketflow/domain';
 
 import { PrismaUnitOfWork } from '../src/orders/persistence/prisma-unit-of-work';
+import { orderRequestHash } from '../src/orders/request-hash';
 
 import { type CookieJar, sessionFor } from './app';
 
@@ -71,11 +72,24 @@ export function fixtures(prisma: PrismaClient) {
     });
   }
 
-  /** Pedido PENDING criado pelo caso de uso, com o estoque reservado como no POST /orders. */
-  async function createOrder(userId: string, items: OrderItemInput[]): Promise<Order> {
+  /**
+   * Pedido PENDING criado pelo caso de uso, com o estoque reservado como no POST /orders, mas
+   * sem sessão no Stripe: como se o processo tivesse caído logo depois do commit.
+   */
+  async function createOrder(
+    userId: string,
+    items: OrderItemInput[],
+    idempotencyKey?: string,
+  ): Promise<Order> {
     const { order } = await placeOrder(
       new PrismaUnitOfWork(prisma),
-      { userId, items },
+      {
+        userId,
+        items,
+        ...(idempotencyKey && {
+          idempotency: { key: idempotencyKey, requestHash: orderRequestHash(items) },
+        }),
+      },
       { now: new Date(), reservationTtlMinutes: 30 },
     );
     return order;

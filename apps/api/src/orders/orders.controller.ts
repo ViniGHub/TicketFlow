@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -21,7 +22,7 @@ import {
   ApiTooManyRequestsResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import {
   type CreateOrderRequest,
   createOrderRequestSchema,
@@ -99,6 +100,19 @@ export class OrdersController {
       response.setHeader('Idempotent-Replayed', 'true');
     }
     return order;
+  }
+
+  @Get(':id')
+  // A página de sucesso consulta o status em polling: fica fora do limite de 20 por minuto,
+  // que conta só criação e cancelamento (ARCHITECTURE.md, seção 9).
+  @SkipThrottle()
+  @ApiOkResponse({ description: 'Status atual do pedido.', schema: orderSchema })
+  @ApiNotFoundResponse({ description: 'Pedido inexistente ou de outro comprador.' })
+  findOne(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParamPipe) orderId: string,
+  ): Promise<OrderResponse> {
+    return this.orders.findOne(user.id, orderId);
   }
 
   @Post(':id/cancel')

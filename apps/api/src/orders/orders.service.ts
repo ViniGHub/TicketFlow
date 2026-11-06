@@ -6,6 +6,7 @@ import {
 } from '@ticketflow/contracts';
 import {
   cancelOrder,
+  findBuyerOrder,
   type PaymentGateway,
   placeOrder,
   startCheckout,
@@ -28,7 +29,7 @@ export interface CreatedOrder {
 
 /**
  * Pedidos do comprador. As regras ficam em packages/domain (`placeOrder`, `startCheckout`,
- * `cancelOrder`).
+ * `cancelOrder`, `findBuyerOrder`).
  */
 @Injectable()
 export class OrdersService {
@@ -62,6 +63,10 @@ export class OrdersService {
     );
     const { order, checkoutUrl } = await startCheckout(this.uow, this.payments, placed.order);
     return { order: { ...toOrderResponse(order), checkoutUrl }, replayed: placed.replayed };
+  }
+
+  async findOne(userId: string, orderId: string): Promise<OrderResponse> {
+    return toOrderResponse(await findBuyerOrder(this.uow, { orderId, userId }));
   }
 
   async cancel(userId: string, orderId: string): Promise<OrderResponse> {

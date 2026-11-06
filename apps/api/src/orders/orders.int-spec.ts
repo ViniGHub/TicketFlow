@@ -446,6 +446,68 @@ describe('Idempotency-Key', () => {
   });
 });
 
+describe('GET /orders/:id', () => {
+  function getOrder(jar: CookieJar | undefined, orderId: string): Promise<Response> {
+    return call(api.url, `/orders/${orderId}`, { ...(jar && { jar }) });
+  }
+
+  it('o dono vê o pedido; outro comprador recebe 404, como se ele não existisse', async () => {
+    const [owner, intruder] = [await createBuyer(), await createBuyer()];
+    const event = await createEvent();
+    const lot = await createLot(event.id, { priceCents: 8_000, total: 10 });
+    const order = await createOrder(owner.id, [{ ticketTypeId: lot.id, quantity: 1 }]);
+
+    const own = await getOrder(owner.jar, order.id);
+    expect(own.status).toBe(200);
+    expect(await json<OrderResponse>(own)).toMatchObject({
+      id: order.id,
+      status: 'PENDING',
+      totalCents: 8_000,
+    });
+
+    const fromIntruder = await getOrder(intruder.jar, order.id);
+    expect(fromIntruder.status).toBe(404);
+    expect((await errorOf(fromIntruder)).code).toBe('ORDER_NOT_FOUND');
+    const missing = await getOrder(owner.jar, '0193a4f2-0000-7000-8000-000000000000');
+    expect(missing.status).toBe(404);
+    expect((await errorOf(missing)).code).toBe('ORDER_NOT_FOUND');
+    expect((await getOrder(owner.jar, 'nao-e-uuid')).status).toBe(400);
+  });
+
+  it('mostra o status gravado, sem consultar o Stripe', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id);
+    const order = await createOrder(buyer.id, [{ ticketTypeId: lot.id, quantity: 1 }]);
+    await prisma.order.update({ where: { id: order.id }, data: { status: 'PAID' } });
+
+    const response = await getOrder(buyer.jar, order.id);
+
+    expect((await json<OrderResponse>(response)).status).toBe('PAID');
+    expect(api.payments.retrieveCalls).toEqual([]);
+  });
+
+  it('o polling da página de sucesso não conta no limite de 20 pedidos por minuto', async () => {
+    const buyer = await createBuyer();
+    const event = await createEvent();
+    const lot = await createLot(event.id);
+    const order = await createOrder(buyer.id, [{ ticketTypeId: lot.id, quantity: 1 }]);
+
+    for (let attempt = 1; attempt <= 25; attempt += 1) {
+      const response = await getOrder(buyer.jar, order.id);
+      expect({ attempt, status: response.status }).toEqual({ attempt, status: 200 });
+      await response.json();
+    }
+    const created = await postOrder(buyer.jar, { items: [{ ticketTypeId: lot.id, quantity: 1 }] });
+    expect(created.status).toBe(201);
+  });
+
+  it('sem sessão responde 401', async () => {
+    const response = await getOrder(undefined, '0193a4f2-0000-7000-8000-000000000000');
+    expect(response.status).toBe(401);
+  });
+});
+
 describe('POST /orders/:id/cancel', () => {
   function cancelRequest(jar: CookieJar | undefined, orderId: string): Promise<Response> {
     return call(api.url, `/orders/${orderId}/cancel`, { method: 'POST', ...(jar && { jar }) });

@@ -287,6 +287,9 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
   **relay** (no worker) lê linhas com `published_at IS NULL` (`FOR UPDATE SKIP LOCKED`),
   publica no BullMQ com **`jobId = outbox.id`** (o BullMQ ignora jobId duplicado) e marca
   `published_at`. Garantia resultante: _at-least-once_; por isso os jobs são idempotentes.
+  O relay mantém as linhas travadas enquanto publica, numa transação por lote de até 100; uma
+  publicação que falha (Redis fora) soma `attempts` e espera o próximo ciclo
+  ([ADR 0012](docs/adr/0012-relay-da-outbox.md)).
 - **Jobs**: podem rodar mais de uma vez sem efeito colateral. O e-mail só é enviado para
   tickets com `emailed_at IS NULL`, e `emailed_at` é gravado logo após o envio.
 
@@ -301,10 +304,16 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
 | `reconcile-stripe`      | repetível, a cada 15 min                                                  | recupera webhooks perdidos (seção 5, passo 7)                   |
 | `send-reminder` (extra) | 24h antes do evento                                                       | lembrete para compradores                                       |
 
-- Tentativas com backoff exponencial. Ao esgotar, o job fica em `failed` (a "dead-letter"
-  do BullMQ) e gera log `error`. Job repetível usa `jobId` fixo, então múltiplas instâncias
-  do worker não duplicam o agendamento.
-- Shutdown gracioso: no `SIGTERM`, `worker.close()` espera os jobs em andamento.
+- Uma fila por tipo de job, com o mesmo nome (`send-ticket-email`, `refund-order`). O relay
+  publica nelas; ele mesmo não é uma fila, e sim um loop no worker, porque precisa rodar
+  justamente quando o Redis está fora.
+- Tentativas com backoff exponencial: 5, a partir de 2 s. Ao esgotar, o job fica em `failed`
+  (a "dead-letter" do BullMQ) e gera log `error`; cada falha anterior gera `warn`, com
+  `jobId` e `orderId`. Jobs concluídos ficam 7 dias no Redis, para o `jobId` repetido ser
+  ignorado. Job repetível usa `jobId` fixo, então múltiplas instâncias do worker não duplicam
+  o agendamento.
+- Shutdown gracioso: no `SIGTERM`, o relay termina o lote em andamento, `worker.close()`
+  espera os jobs em andamento, e só então as filas e o Prisma fecham.
 - O worker é uma aplicação **NestJS standalone** (`NestFactory.createApplicationContext`) e
   reutiliza os mesmos módulos de domínio, Prisma e Stripe da API.
 
@@ -523,6 +532,8 @@ Registrados:
     painel
 11. `0011-ingressos-check-in-e-vendas.md`: check-in num UPDATE condicional, motivo da recusa
     lido depois, o que conta como venda e reserva
+12. `0012-relay-da-outbox.md`: trava durante a publicação, `jobId` da linha, publicação que
+    não espera o Redis, falha que não trava o lote, ordem do shutdown
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

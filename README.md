@@ -213,6 +213,16 @@ ticketflow/
 
 </details>
 
+<details>
+<summary><b>O que já foi entregue na fase 5</b></summary>
+
+- ✅ **5.1 Worker e relay da outbox:** o worker publica as linhas da outbox no BullMQ em lotes
+  com `FOR UPDATE SKIP LOCKED` e `jobId` igual ao id da linha: dois workers nunca publicam a
+  mesma linha, e com o Redis fora a linha espera e sai quando ele volta. Jobs com 5 tentativas e
+  backoff exponencial, falhas no log com `jobId` e `orderId`, shutdown gracioso.
+
+</details>
+
 O plano completo, com escopo e critérios de aceite de cada etapa, está no
 [ROADMAP.md](ROADMAP.md).
 

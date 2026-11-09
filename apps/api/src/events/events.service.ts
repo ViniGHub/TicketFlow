@@ -15,13 +15,13 @@ import {
   assertEventSchedule,
   assertStartsInFuture,
   decidePublish,
+  EventNotFoundError,
 } from '@ticketflow/domain';
 import { z } from 'zod';
 
 import { decodeCursor, encodeCursor, toPage } from '../common/pagination';
 
 import { lockOwnedEvent } from './catalog-locks';
-import { EventNotFoundError } from './events.errors';
 import { toEventResponse, toEventSummaryResponse, withTicketTypes } from './events.mapper';
 
 /** Chave do catálogo público: ordem por data do evento, com o id desempatando. */

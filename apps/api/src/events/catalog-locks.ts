@@ -1,12 +1,11 @@
 import { type Prisma } from '@ticketflow/db';
 import {
+  EventNotFoundError,
   type EventStatus,
   type SalesWindow,
   type Stock,
   TicketTypeNotFoundError,
 } from '@ticketflow/domain';
-
-import { EventNotFoundError } from './events.errors';
 
 // Toda escrita no catálogo começa travando o evento (FOR UPDATE) dentro da transação. Sem a
 // trava, mover a data do evento e mudar o fim das vendas de um lote ao mesmo tempo passariam

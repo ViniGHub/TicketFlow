@@ -367,6 +367,15 @@ importers:
       '@ticketflow/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@ticketflow/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@ticketflow/payments':
+        specifier: workspace:*
+        version: link:../../packages/payments
+      '@ticketflow/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
       bullmq:
         specifier: ^6.7.2
         version: 6.7.2(ioredis@6.0.0)(pg@8.23.1)

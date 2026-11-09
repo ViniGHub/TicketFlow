@@ -11,6 +11,8 @@ import { type Job, UnrecoverableError } from 'bullmq';
  */
 export abstract class LoggedProcessor extends WorkerHost {
   protected readonly logger: Logger;
+  /** Os jobs recorrentes (etapa 5.3) baixam para `debug`: um por minuto só faria ruído. */
+  protected readonly completedLogLevel: 'log' | 'debug' = 'log';
 
   constructor(logger?: Logger) {
     super();
@@ -25,7 +27,7 @@ export abstract class LoggedProcessor extends WorkerHost {
 
   @OnWorkerEvent('completed')
   onJobCompleted(job: Job): void {
-    this.logger.log({ message: 'Job concluído', ...jobFields(job) });
+    this.logger[this.completedLogLevel]({ message: 'Job concluído', ...jobFields(job) });
   }
 
   @OnWorkerEvent('failed')
@@ -60,4 +62,9 @@ export function jobFields(job: Job): Record<string, string> {
     fields['orderId'] = data.orderId;
   }
   return fields;
+}
+
+/** Mensagem de um erro qualquer, para o log. */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

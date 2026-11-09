@@ -1,6 +1,7 @@
-import { type DefaultJobOptions } from 'bullmq';
+import { type DefaultJobOptions, type JobSchedulerTemplateOptions } from 'bullmq';
 
-// Opções de todo job publicado pelo relay (ARCHITECTURE.md, seção 8; ADR 0012).
+// Opções dos jobs do worker (ARCHITECTURE.md, seção 8): os publicados pelo relay (ADR 0012) e os
+// recorrentes (ADR 0014).
 
 const DAY_SECONDS = 24 * 60 * 60;
 
@@ -19,3 +20,14 @@ export const DEFAULT_JOB_OPTIONS = {
   /** Job esgotado fica em `failed` (a dead-letter do BullMQ) até alguém olhar. */
   removeOnFail: false,
 } as const satisfies DefaultJobOptions;
+
+/**
+ * Jobs recorrentes (`expire-orders`, `reconcile-stripe`): uma tentativa só, porque a próxima
+ * execução já vem no intervalo do scheduler. Ficam só os últimos no Redis: um por minuto
+ * encheria o Redis em 7 dias.
+ */
+export const SCHEDULED_JOB_OPTIONS = {
+  attempts: 1,
+  removeOnComplete: { count: 100 },
+  removeOnFail: { count: 1_000 },
+} as const satisfies JobSchedulerTemplateOptions;

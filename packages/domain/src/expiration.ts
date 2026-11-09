@@ -53,7 +53,8 @@ export class ExpirationService {
         if (candidate.stripeSessionId) {
           const result = await this.sessionExpirer.expireCheckoutSession(candidate.stripeSessionId);
           if (result === 'complete') {
-            // A etapa 5.3 aplica aqui o mesmo tratamento do webhook de pagamento.
+            // Quem chama aplica o pagamento como o webhook faria: o job `expire-orders` usa o
+            // StripeReconciler (etapa 5.3).
             summary.paymentCompleted.push(candidate.id);
             continue;
           }

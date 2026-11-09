@@ -203,6 +203,10 @@ ticketflow/
   `PAID` com um ingresso por unidade e o e-mail na outbox, ou `EXPIRED` com o estoque de volta.
   O mesmo evento entregue várias vezes, inclusive ao mesmo tempo, é processado uma vez; uma
   falha no meio desfaz tudo e responde 500, para o Stripe reenviar.
+- ✅ **4.3 Pagamento assíncrono, tardio e reembolso:** o resto da tabela de transições que
+  depende do Stripe, com eventos fora de ordem. Pagamento que chega com o pedido já expirado
+  reserva o estoque de novo ou vira reembolso, sem vazar a reserva parcial; o `charge.refunded`
+  acha o pedido pelo PaymentIntent e anula os ingressos. Cada transição tem teste de integração.
 
 </details>
 

@@ -146,7 +146,7 @@ ticketflow/
 | 2. Catálogo                 | Eventos e lotes                           | ✅ concluída |
 | 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ✅ concluída |
 | 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ✅ concluída |
-| 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⏳ em curso  |
+| 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ✅ concluída |
 | 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer   |
 | 7. Produção                 | Observabilidade, deploy e segurança       | ⬜ a fazer   |
 | 8. Portfólio                | Documentação e material de entrevista     | ⬜ a fazer   |
@@ -215,7 +215,7 @@ ticketflow/
 </details>
 
 <details>
-<summary><b>O que já foi entregue na fase 5</b></summary>
+<summary><b>O que foi entregue na fase 5</b></summary>
 
 - ✅ **5.1 Worker e relay da outbox:** o worker publica as linhas da outbox no BullMQ em lotes
   com `FOR UPDATE SKIP LOCKED` e `jobId` igual ao id da linha: dois workers nunca publicam a
@@ -229,6 +229,11 @@ ticketflow/
   `PAID` e o estoque fica reservado. A cada 15 min, consulta no Stripe os pedidos que esperam
   pagamento há mais de 10 min e aplica o resultado pelo mesmo processador do webhook, então um
   webhook perdido não perde a venda.
+- ✅ **5.4 Reembolso e cancelamento de evento:** `POST /events/:id/cancel` reembolsa os pedidos
+  pagos, anula os ingressos e encerra as reservas numa transação, sem chamar o Stripe dentro
+  dela; o job de expiração expira as sessões pendentes. O job `refund-order` não duplica
+  reembolso, e um pagamento que chegue depois do cancelamento também vira reembolso. Os
+  compradores recebem e-mail.
 
 </details>
 
@@ -310,6 +315,10 @@ seed de novo (o Prisma 7 não roda o seed automaticamente no reset).
 6. Para ver a reconciliação, desligue o `stripe listen` antes de pagar outro pedido. Ele fica
    `PENDING` até o job `reconcile-stripe` do worker consultar a sessão, uns 10 a 25 min depois
    da compra, e aí vira `PAID`, com o e-mail no Mailpit.
+7. Para ver o reembolso, faça login como `organizador@ticketflow.local` e cancele o evento em
+   `POST /events/{id}/cancel`. Com o worker e o `stripe listen` rodando, o pedido pago vai para
+   `REFUND_PENDING`, o Stripe devolve o pagamento, o `charge.refunded` deixa o pedido
+   `REFUNDED` e o e-mail de cancelamento chega ao Mailpit.
 
 A sessão vale 35 minutos (o mínimo do Stripe mais uma folga). Pedidos de R$ 0,01 a R$ 0,49
 são recusados com 422, porque o Stripe só cobra a partir de R$ 0,50 em BRL. O webhook responde
@@ -376,6 +385,7 @@ As dependências são atualizadas pelo Dependabot.
 | **Compra trava o evento em modo compartilhado** | Compras não esperam umas pelas outras, mas um cancelamento de evento não passa no meio de uma compra ([ADR 0006](docs/adr/0006-criacao-de-pedido.md))                                             |
 | **Checkout Session depois do commit**           | Chamada ao Stripe fora da transação, com a chave e os parâmetros do pedido; se falha, o pedido é cancelado ([ADR 0008](docs/adr/0008-checkout-session.md))                                        |
 | **Reconciliação pelo processador do webhook**   | Webhook perdido não perde a venda: o estado da sessão vira um evento sintético, deduplicado como os reais ([ADR 0014](docs/adr/0014-expiracao-e-reconciliacao-com-o-stripe.md))                   |
+| **Cancelamento de evento sem Stripe**           | Reembolsos e avisos saem pela outbox, e o job de expiração encerra as sessões; pagamento depois do cancelamento vira reembolso ([ADR 0015](docs/adr/0015-cancelamento-de-evento-e-reembolso.md))  |
 
 ## 🔮 Depois do MVP
 

@@ -75,6 +75,21 @@ describe('transição de pedido', () => {
     expect(db.available(lotA)).toBe(10);
   });
 
+  it('EXPIRED → PAID sem estoque devolve o que já reservou, mesmo sem rollback', async () => {
+    const { db, order } = setup('EXPIRED', { a: 10, b: 0 });
+
+    // Quem chama captura o erro e segue na mesma transação (pagamento tardio, etapa 4.3).
+    const caught = await db.run((repositories) =>
+      transitionOrder(repositories, order, 'PAID').catch((error: unknown) => error),
+    );
+
+    expect(caught).toEqual(new InsufficientStockError(lotB));
+    expect(db.reservations).toEqual([lotA, lotB]);
+    expect(db.releases).toEqual([{ ticketTypeId: lotA, quantity: 2 }]);
+    expect(db.available(lotA)).toBe(10);
+    expect(db.order('pedido-1')?.status).toBe('EXPIRED');
+  });
+
   it('transição fora da tabela lança antes de mexer no estoque', async () => {
     const { db, order } = setup('PAID');
 

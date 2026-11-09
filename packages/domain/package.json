@@ -20,6 +20,9 @@
     "test": "vitest run --project unit --coverage",
     "test:integration": "vitest run --project integration"
   },
+  "dependencies": {
+    "@ticketflow/contracts": "workspace:*"
+  },
   "devDependencies": {
     "@ticketflow/config": "workspace:*",
     "@types/node": "^24.19.2",

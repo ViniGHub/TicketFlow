@@ -171,17 +171,21 @@ Stripe confirmar ou recusar o pagamento.
    - Valida a assinatura usando o **corpo cru (raw body)** e `STRIPE_WEBHOOK_SECRET`.
      Assinatura inválida → 400.
    - Abre **uma única transação** que contém:
-     1. `INSERT INTO stripe_events (event_id, ...)`. Violação de UNIQUE → evento já
-        processado: rollback e responde 200.
+     1. `INSERT INTO stripe_events (event_id, ...) ON CONFLICT DO NOTHING`. Nenhuma linha
+        gravada → evento já processado: responde 200 sem mudar nada. Com duas entregas
+        simultâneas do mesmo evento, a segunda espera a primeira terminar
+        ([ADR 0009](docs/adr/0009-webhook-do-stripe.md)).
      2. A mudança de estado do pedido (`SELECT ... FOR UPDATE` no pedido).
      3. A criação dos `tickets`, quando aplicável.
      4. O `INSERT` na `outbox` (ex. `send-ticket-email`).
    - Se qualquer passo falhar, tudo é revertido (inclusive o registro em `stripe_events`) e a
-     resposta é **5xx**, para o Stripe reenviar o evento. Nunca registrar o evento como
-     processado sem processar.
+     resposta é **5xx**, mesmo quando a causa é um erro de domínio, para o Stripe reenviar o
+     evento. Nunca registrar o evento como processado sem processar.
    - Eventos tratados: `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
-     `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`.
-     Demais tipos: grava em `stripe_events` e responde 200.
+     `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`
+     (os dois de pagamento assíncrono e o reembolso a partir da etapa 4.3). Demais tipos:
+     grava em `stripe_events` e responde 200. Sessão que não é de um pedido do TicketFlow,
+     pedido inexistente e sessão diferente da gravada no pedido também são gravados sem efeito.
    - Responde 200 rápido; trabalho pesado (QR code, e-mail) sai pela outbox.
 5. **Página de sucesso**: apenas consulta `GET /orders/:id` e mostra o status atual.
    Se ainda `PENDING`/`PROCESSING`, faz polling por alguns segundos. **Nunca** marca como pago.
@@ -344,6 +348,18 @@ do front-end.
   outro comprador → 404.
 - Rate limit de 20 pedidos por minuto por usuário (criação e cancelamento somados).
 
+**Webhook do Stripe** ([ADR 0009](docs/adr/0009-webhook-do-stripe.md)):
+
+- `POST /webhooks/stripe` não tem login, rate limit nem Swagger: quem autentica é a assinatura,
+  conferida sobre o corpo cru. Sem assinatura válida → 400; evento processado, repetido ou
+  ignorado → 200; falha no processamento → 500, e o Stripe reenvia.
+- `checkout.session.completed` pago (ou sem cobrança, no pedido grátis) leva o pedido `PENDING`
+  a `PAID`, emite um ingresso por unidade e grava `send-ticket-email` na outbox, com só o id do
+  pedido no payload. `checkout.session.expired` leva o pedido `PENDING` a `EXPIRED` e devolve o
+  estoque; pedido já cancelado ou expirado fica como está.
+- Pagamento confirmado para pedido que já saiu de `PENDING` (pagamento tardio) responde 500
+  sem registrar o evento até a etapa 4.3, que o trata.
+
 **Check-in** é atômico:
 
 ```sql
@@ -466,11 +482,13 @@ Registrados:
    reconfere; mesma ordem no cancelamento
 8. `0008-checkout-session.md`: pacote `payments`, sessão criada depois do commit e gravada
    com o pedido travado, compensação, parâmetros deterministas e limites de valor do Stripe
+9. `0009-webhook-do-stripe.md`: webhook como fonte da verdade, uma transação por evento,
+   `ON CONFLICT DO NOTHING` em `stripe_events`, 5xx em qualquer falha, eventos alheios gravados
+   sem efeito
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 
 - `stripe-checkout-hospedado`: por que não coletar cartão no próprio site
-- `webhook-como-fonte-da-verdade`
 - `controle-de-estoque-atomico`
 - `fila-bullmq-para-jobs-assincronos`
 - `transactional-outbox`: por que não enfileirar direto (alternativa avaliada: pg-boss)

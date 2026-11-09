@@ -198,6 +198,11 @@ ticketflow/
   retentativa recebe a mesma sessão. Se o Stripe falha, o pedido é cancelado e o estoque volta.
   `GET /orders/:id` só para o dono. O adaptador fica num pacote próprio, reutilizável pelo
   worker, e os testes usam um gateway fake.
+- ✅ **4.2 Webhook transacional:** `POST /webhooks/stripe` confere a assinatura sobre o corpo
+  cru e processa cada evento numa transação: registro em `stripe_events`, pedido travado,
+  `PAID` com um ingresso por unidade e o e-mail na outbox, ou `EXPIRED` com o estoque de volta.
+  O mesmo evento entregue várias vezes, inclusive ao mesmo tempo, é processado uma vez; uma
+  falha no meio desfaz tudo e responde 500, para o Stripe reenviar.
 
 </details>
 
@@ -266,10 +271,21 @@ seed de novo (o Prisma 7 não roda o seed automaticamente no reset).
    traz `checkoutUrl`: abra no navegador e pague com o cartão `4242 4242 4242 4242`, qualquer
    data futura e qualquer CVC.
 
+4. Depois de pagar, o `stripe listen` mostra o `checkout.session.completed` entregue com 200, e
+   `GET /orders/{id}` responde `PAID`. Os ingressos ficam na tabela `tickets`; o e-mail com
+   eles sai pelo worker a partir da etapa 5.2.
+5. Para conferir a idempotência, reenvie o evento com o id que o `stripe listen` mostrou. A
+   API responde 200, e nenhum ingresso novo é criado:
+
+   ```bash
+   stripe events resend evt_...
+   ```
+
 A sessão vale 35 minutos (o mínimo do Stripe mais uma folga). Pedidos de R$ 0,01 a R$ 0,49
-são recusados com 422, porque o Stripe só cobra a partir de R$ 0,50 em BRL. O endpoint
-`/webhooks/stripe`, que marca o pedido como pago, chega na etapa 4.2; até lá o
-`stripe listen` mostra os eventos, mas a API responde 404 a eles.
+são recusados com 422, porque o Stripe só cobra a partir de R$ 0,50 em BRL. O webhook responde
+400 sem assinatura válida e 500 se o processamento falhar, e aí o Stripe reenvia. Eventos de
+outros tipos, ou de sessões que não são de um pedido desta instalação, são registrados e
+respondem 200 sem mudar nada.
 
 </details>
 

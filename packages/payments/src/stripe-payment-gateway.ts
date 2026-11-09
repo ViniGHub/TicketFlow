@@ -137,8 +137,20 @@ function isOneOf<T extends string>(values: readonly T[], value: string | null): 
   return values.some((known) => known === value);
 }
 
-function toSessionState(session: Stripe.Checkout.Session): CheckoutSessionState {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Pedido do TicketFlow a que a sessão pertence, de `metadata.order_id` (ou do
+ * `client_reference_id`). `null` quando a sessão não tem um id de pedido válido: veio de outra
+ * integração na mesma conta do Stripe.
+ */
+export function ticketflowOrderIdOf(session: Stripe.Checkout.Session): string | null {
   const orderId = session.metadata?.['order_id'] ?? session.client_reference_id;
+  return orderId && UUID.test(orderId) ? orderId.toLowerCase() : null;
+}
+
+export function toSessionState(session: Stripe.Checkout.Session): CheckoutSessionState {
+  const orderId = ticketflowOrderIdOf(session);
   if (!orderId) {
     throw new Error(`A sessão ${session.id} não pertence a um pedido do TicketFlow.`);
   }

@@ -1,6 +1,8 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 
 import { DatabaseModule } from './database/database.module';
+import { EmailModule, type EmailModuleOptions } from './email/email.module';
+import { EventCancelledEmailModule } from './event-cancelled-email/event-cancelled-email.module';
 import {
   HEARTBEAT_OPTIONS,
   HeartbeatService,
@@ -9,11 +11,9 @@ import {
 import { OutboxModule, type OutboxModuleOptions } from './outbox/outbox.module';
 import { PaymentsModule, type PaymentsModuleOptions } from './payments/payments.module';
 import { QueuesModule } from './queues/queues.module';
+import { RefundsModule } from './refunds/refunds.module';
 import { StripeSyncModule } from './stripe-sync/stripe-sync.module';
-import {
-  TicketEmailModule,
-  type TicketEmailModuleOptions,
-} from './ticket-email/ticket-email.module';
+import { TicketEmailModule } from './ticket-email/ticket-email.module';
 
 export interface WorkerModuleOptions {
   databaseUrl: string;
@@ -21,8 +21,8 @@ export interface WorkerModuleOptions {
   heartbeat: HeartbeatOptions;
   /** Ritmo e tamanho do lote do relay da outbox; os testes encurtam o intervalo. */
   relay?: OutboxModuleOptions;
-  /** Remetente e transporte do e-mail de ingressos. */
-  email: TicketEmailModuleOptions;
+  /** Remetente e transporte dos e-mails. */
+  email: EmailModuleOptions;
   /** Stripe, para a expiração e a reconciliação; os testes passam um gateway de mentira. */
   payments: PaymentsModuleOptions;
 }
@@ -37,7 +37,10 @@ export class WorkerModule {
         QueuesModule.forRoot({ redisUrl: options.redisUrl }),
         OutboxModule.forRoot(options.relay),
         PaymentsModule.forRoot(options.payments),
-        TicketEmailModule.forRoot(options.email),
+        EmailModule.forRoot(options.email),
+        TicketEmailModule,
+        EventCancelledEmailModule,
+        RefundsModule,
         StripeSyncModule,
       ],
       providers: [{ provide: HEARTBEAT_OPTIONS, useValue: options.heartbeat }, HeartbeatService],

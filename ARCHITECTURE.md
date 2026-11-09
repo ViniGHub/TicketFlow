@@ -147,6 +147,11 @@ aprovação ou a recusa do pagamento assíncrono também valem para um pedido ai
 `PAID` passa por `REFUND_PENDING` e `REFUNDED` na mesma transação e anula os ingressos
 ([ADR 0010](docs/adr/0010-pagamento-assincrono-tardio-e-reembolso.md)).
 
+Pagamento confirmado para um pedido de evento cancelado não emite ingressos: o pagamento fica
+registrado e vai para reembolso. `PENDING` e `PROCESSING` passam por `PAID` até
+`REFUND_PENDING` na mesma transação; `EXPIRED` vai direto a `REFUND_PENDING`, sem reservar o
+estoque de novo ([ADR 0015](docs/adr/0015-cancelamento-de-evento-e-reembolso.md)).
+
 ## 5. Fluxo de pagamento
 
 1. **Checkout**: `POST /orders` com itens `[ {ticketTypeId, quantity} ]` e header opcional
@@ -246,9 +251,23 @@ pagamento confirmado chegar para um pedido já `EXPIRED`:
 
 ### Cancelamento de evento
 
-Quando o organizador cancela um evento `PUBLISHED`: o evento vira `CANCELLED` (novas vendas
-bloqueadas), os pedidos `PENDING` são expirados e, para cada pedido `PAID`, é gravado um job
-`refund-order` na outbox, na mesma transação. Os compradores recebem e-mail de cancelamento.
+`POST /events/:id/cancel` (organizador dono de um evento `PUBLISHED`) faz tudo numa transação,
+sem chamar o Stripe ([ADR 0015](docs/adr/0015-cancelamento-de-evento-e-reembolso.md)):
+
+1. Trava o evento (`FOR UPDATE`), como as escritas do catálogo: compras em andamento terminam
+   antes, e as novas encontram o evento cancelado.
+2. Trava, em ordem de id, os pedidos `PENDING`, `PROCESSING` e `PAID` do evento.
+3. Aplica a regra de cada status:
+   - `PAID` vai para `REFUND_PENDING`, com os ingressos anulados e `refund-order` mais
+     `send-event-cancelled-email` na outbox. Pedido grátis vai direto a `REFUNDED`.
+   - `PENDING` tem a reserva encerrada agora (`expires_at = now`). O job `expire-orders` expira
+     a sessão no Stripe e devolve o estoque (passo 6).
+   - `PROCESSING` espera o Stripe; se o pagamento for aprovado, vira reembolso.
+4. Marca o evento como `CANCELLED`, com `cancelled_at`.
+
+O pedido é reembolsado inteiro, mesmo com ingressos de outro evento. O job `refund-order` só
+chama o Stripe para pedido em `REFUND_PENDING`, com `idempotencyKey = refund:<order.id>`; o
+pedido vira `REFUNDED` com o `charge.refunded`.
 
 ## 6. Controle de estoque (anti-overselling)
 
@@ -306,14 +325,15 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
 
 ## 8. Jobs (BullMQ, no worker)
 
-| Fila / job              | Gatilho                                                                   | O que faz                                                       |
-| ----------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `outbox-relay`          | loop contínuo (~1 s)                                                      | publica linhas pendentes da `outbox` no BullMQ                  |
-| `send-ticket-email`     | outbox (pedido virou `PAID`)                                              | gera QR code (PNG) de cada ticket e envia e-mail                |
-| `refund-order`          | outbox (pagamento tardio sem estoque, evento cancelado, reembolso manual) | chama `stripe.refunds.create` com chave de idempotência         |
-| `expire-orders`         | scheduler, 1/min                                                          | expira sessões no Stripe e depois os pedidos (seção 5, passo 6) |
-| `reconcile-stripe`      | scheduler, a cada 15 min                                                  | recupera webhooks perdidos (seção 5, passo 7)                   |
-| `send-reminder` (extra) | 24h antes do evento                                                       | lembrete para compradores                                       |
+| Fila / job                   | Gatilho                                                                   | O que faz                                                             |
+| ---------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `outbox-relay`               | loop contínuo (~1 s)                                                      | publica linhas pendentes da `outbox` no BullMQ                        |
+| `send-ticket-email`          | outbox (pedido virou `PAID`)                                              | gera QR code (PNG) de cada ticket e envia e-mail                      |
+| `refund-order`               | outbox (pagamento tardio sem estoque, evento cancelado, reembolso manual) | chama `stripe.refunds.create` com chave de idempotência               |
+| `send-event-cancelled-email` | outbox (evento cancelado, pedido pago)                                    | avisa o comprador: eventos cancelados, ingressos anulados e reembolso |
+| `expire-orders`              | scheduler, 1/min                                                          | expira sessões no Stripe e depois os pedidos (seção 5, passo 6)       |
+| `reconcile-stripe`           | scheduler, a cada 15 min                                                  | recupera webhooks perdidos (seção 5, passo 7)                         |
+| `send-reminder` (extra)      | 24h antes do evento                                                       | lembrete para compradores                                             |
 
 - Uma fila por tipo de job, com o mesmo nome (`send-ticket-email`, `refund-order`). O relay
   publica nelas; ele mesmo não é uma fila, e sim um loop no worker, porque precisa rodar
@@ -365,8 +385,8 @@ do front-end.
 - Toda escrita trava o evento (`SELECT ... FOR UPDATE`) e, ao mudar o total, também o lote.
   O total de um lote não fica abaixo do vendido (`total - available`, que inclui reservas).
 - Entrada malformada → 400; regra de janela de vendas ou data no passado → 422; conflito com
-  o estado (total abaixo do vendido, publicar sem lote, evento cancelado, excluir publicado)
-  → 409.
+  o estado (total abaixo do vendido, publicar sem lote, evento cancelado, excluir publicado,
+  cancelar rascunho) → 409.
 
 **Pedidos** ([ADR 0006](docs/adr/0006-criacao-de-pedido.md)):
 
@@ -554,6 +574,9 @@ Registrados:
 14. `0014-expiracao-e-reconciliacao-com-o-stripe.md`: estado da sessão aplicado pelo
     processador do webhook com um evento sintético, sessão paga na expiração, schedulers do
     BullMQ com id fixo
+15. `0015-cancelamento-de-evento-e-reembolso.md`: cancelamento numa transação sem Stripe,
+    reservas encerradas para o job de expiração, pagamento de evento cancelado vira reembolso,
+    `refund-order` idempotente
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

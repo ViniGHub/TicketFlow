@@ -268,6 +268,31 @@ describe('reembolso', () => {
   });
 });
 
+describe('reembolso repetido', () => {
+  const alreadyRefunded = () =>
+    new Stripe.errors.StripeInvalidRequestError({
+      type: 'invalid_request_error',
+      code: 'charge_already_refunded',
+      message: 'Charge has already been refunded.',
+    });
+
+  it('cobrança já devolvida (chave de idempotência vencida) é sucesso', async () => {
+    const { gateway, refunds } = setup();
+    refunds.create.mockRejectedValueOnce(alreadyRefunded());
+
+    await expect(gateway.refund(orderId, 'pi_test_1')).resolves.toBeUndefined();
+  });
+
+  it('outro erro do Stripe sobe, para o job tentar de novo', async () => {
+    const { gateway, refunds } = setup();
+    refunds.create.mockRejectedValueOnce(invalidRequest());
+
+    await expect(gateway.refund(orderId, 'pi_test_1')).rejects.toBeInstanceOf(
+      Stripe.errors.StripeInvalidRequestError,
+    );
+  });
+});
+
 describe('createStripePaymentGateway', () => {
   it('monta o gateway sem chamar o Stripe', () => {
     expect(createStripePaymentGateway({ secretKey: 'sk_test_x', appUrl })).toBeInstanceOf(

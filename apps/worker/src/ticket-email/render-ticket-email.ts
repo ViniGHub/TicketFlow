@@ -1,6 +1,8 @@
 import { SEND_TICKET_EMAIL_JOB } from '@ticketflow/contracts';
 
-import { type EmailImage, type EmailMessage } from './email-message';
+import { escapeHtml, formatEventDate } from '../email/email-format';
+import { type EmailImage, type EmailMessage } from '../email/email-message';
+
 import { qrCodePng } from './qr-code';
 
 // Conteúdo do e-mail de ingressos (ROADMAP, etapa 5.2; ADR 0013).
@@ -25,25 +27,6 @@ export interface TicketEmailInput {
   orderId: string;
   buyer: { name: string; email: string };
   tickets: readonly TicketEmailTicket[];
-}
-
-/** Data e hora do evento no fuso dele, em pt-BR: "domingo, 20 de dezembro de 2026 às 20:00". */
-export function formatEventDate(startsAt: Date, timezone: string): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    timeZone: timezone,
-    dateStyle: 'full',
-    timeStyle: 'short',
-  }).format(startsAt);
-}
-
-/** Título, local, lote e nome vêm do organizador e do comprador: nada vira HTML. */
-export function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
 }
 
 export function contentIdOf(ticketId: string): string {

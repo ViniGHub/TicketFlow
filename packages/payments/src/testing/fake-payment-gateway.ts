@@ -36,18 +36,30 @@ export class FakePaymentGateway implements PaymentGateway {
   readonly createCalls: CreateCall[] = [];
   readonly retrieveCalls: string[] = [];
   readonly expireCalls: string[] = [];
+  /** Toda chamada a `refund`, inclusive as repetidas. */
   readonly refundCalls: RefundCall[] = [];
+  /**
+   * Reembolsos criados de fato: como no Stripe, a mesma chave de idempotência ou um pagamento
+   * já devolvido não criam outro.
+   */
+  readonly refunds: RefundCall[] = [];
   /** Roda a cada criação, antes de responder (ex.: outra transação muda o pedido no meio). */
   onCreate?: (request: CheckoutSessionRequest) => void | Promise<void>;
 
   private readonly sessions = new Map<string, CheckoutSessionState>();
   private readonly byIdempotencyKey = new Map<string, { params: string; sessionId: string }>();
   private readonly createFailures: Error[] = [];
+  private readonly refundFailures: Error[] = [];
   private created = 0;
 
   /** A próxima criação falha com `error`, sem criar a sessão. */
   failNextCreate(error: Error = new Error('Stripe indisponível (fake).')): void {
     this.createFailures.push(error);
+  }
+
+  /** O próximo reembolso falha com `error`, sem criar nada (ex.: Stripe fora do ar). */
+  failNextRefund(error: Error = new Error('Stripe indisponível (fake).')): void {
+    this.refundFailures.push(error);
   }
 
   /** O comprador pagou: a sessão fica `complete` e perde a URL. */
@@ -77,6 +89,8 @@ export class FakePaymentGateway implements PaymentGateway {
     this.retrieveCalls.length = 0;
     this.expireCalls.length = 0;
     this.refundCalls.length = 0;
+    this.refunds.length = 0;
+    this.refundFailures.length = 0;
     this.onCreate = undefined;
     this.sessions.clear();
     this.byIdempotencyKey.clear();
@@ -140,11 +154,19 @@ export class FakePaymentGateway implements PaymentGateway {
   }
 
   refund(orderId: string, paymentIntentId: string): Promise<void> {
-    this.refundCalls.push({
-      orderId,
-      paymentIntentId,
-      idempotencyKey: refundIdempotencyKey(orderId),
-    });
+    const call = { orderId, paymentIntentId, idempotencyKey: refundIdempotencyKey(orderId) };
+    this.refundCalls.push(call);
+    const failure = this.refundFailures.shift();
+    if (failure) {
+      return Promise.reject(failure);
+    }
+    const duplicate = this.refunds.some(
+      (refund) =>
+        refund.idempotencyKey === call.idempotencyKey || refund.paymentIntentId === paymentIntentId,
+    );
+    if (!duplicate) {
+      this.refunds.push(call);
+    }
     return Promise.resolve();
   }
 

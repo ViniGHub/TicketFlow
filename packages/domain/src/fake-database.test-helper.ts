@@ -109,6 +109,14 @@ export class FakeCheckoutGateway implements CheckoutGateway {
 
 export const FAKE_NOW = new Date('2026-11-20T12:00:00Z');
 
+/** Evento como o cancelamento o vê: dono, status e quando foi cancelado. */
+export interface StoredEvent {
+  id: string;
+  organizerId: string;
+  status: EventStatus;
+  cancelledAt: Date | null;
+}
+
 export interface StoredTicketType extends PurchasableTicketType {
   available: number;
   name: string;
@@ -122,6 +130,8 @@ export interface StoredTicketType extends PurchasableTicketType {
  */
 export class FakeDatabase implements UnitOfWork {
   ticketTypes = new Map<string, StoredTicketType>();
+  /** Eventos para o cancelamento. Os lotes guardam o status do evento em `event`. */
+  events = new Map<string, StoredEvent>();
   orders: Order[] = [];
   /** Pedidos confirmados por outra transação: o rollback desta não os desfaz. */
   committedElsewhere: Order[] = [];
@@ -148,9 +158,12 @@ export class FakeDatabase implements UnitOfWork {
 
   addTicketType(
     id: string,
-    overrides: Partial<Omit<StoredTicketType, 'event'>> & { status?: EventStatus } = {},
+    overrides: Partial<Omit<StoredTicketType, 'event'>> & {
+      status?: EventStatus;
+      eventId?: string;
+    } = {},
   ): void {
-    const { status = 'PUBLISHED', ...rest } = overrides;
+    const { status = 'PUBLISHED', eventId = 'evento-1', ...rest } = overrides;
     this.ticketTypes.set(id, {
       id,
       priceCents: 8_000,
@@ -160,9 +173,23 @@ export class FakeDatabase implements UnitOfWork {
       available: 10,
       name: 'Pista',
       eventTitle: 'Show de Teste',
-      event: { id: 'evento-1', status },
+      event: { id: eventId, status },
       ...rest,
     });
+  }
+
+  /** Grava um evento com dono, para o cancelamento. O status também vale nos lotes dele. */
+  addEvent(id: string, overrides: Partial<Omit<StoredEvent, 'id'>> = {}): StoredEvent {
+    const event: StoredEvent = {
+      id,
+      organizerId: 'organizador-1',
+      status: 'PUBLISHED',
+      cancelledAt: null,
+      ...overrides,
+    };
+    this.events.set(id, event);
+    this.setEventStatusOnLots(id, event.status);
+    return event;
   }
 
   /** Grava um pedido já existente (ex.: um PENDING vencido para a expiração). */
@@ -207,6 +234,7 @@ export class FakeDatabase implements UnitOfWork {
     this.openTransactions += 1;
     const snapshot = {
       ticketTypes: new Map([...this.ticketTypes].map(([id, lot]) => [id, { ...lot }])),
+      events: new Map([...this.events].map(([id, event]) => [id, { ...event }])),
       orders: [...this.orders],
       tickets: [...this.tickets],
       ticketVoids: [...this.ticketVoids],
@@ -217,6 +245,7 @@ export class FakeDatabase implements UnitOfWork {
       return await work(this.repositories());
     } catch (error) {
       this.ticketTypes = snapshot.ticketTypes;
+      this.events = snapshot.events;
       this.orders = snapshot.orders;
       this.tickets = snapshot.tickets;
       this.ticketVoids = snapshot.ticketVoids;
@@ -245,6 +274,19 @@ export class FakeDatabase implements UnitOfWork {
     return [...this.orders, ...this.committedElsewhere];
   }
 
+  /** Troca o objeto `event` dos lotes, sem mutar: o snapshot do rollback guarda o anterior. */
+  private setEventStatusOnLots(eventId: string, status: EventStatus): void {
+    for (const lot of this.ticketTypes.values()) {
+      if (lot.event.id === eventId) {
+        lot.event = { ...lot.event, status };
+      }
+    }
+  }
+
+  private eventIdOf(ticketTypeId: string): string | undefined {
+    return this.ticketTypes.get(ticketTypeId)?.event.id;
+  }
+
   private replaceOrder(id: string, change: Partial<Order>): void {
     this.orders = this.orders.map((order) => (order.id === id ? { ...order, ...change } : order));
   }
@@ -266,6 +308,25 @@ export class FakeDatabase implements UnitOfWork {
               return lot ? [{ id, name: lot.name, eventTitle: lot.eventTitle }] : [];
             }),
           ),
+        lockOwnedEvent: (eventId, organizerId) => {
+          this.locks.push(eventId);
+          const event = this.events.get(eventId);
+          return Promise.resolve(
+            event?.organizerId === organizerId ? { id: event.id, status: event.status } : null,
+          );
+        },
+        markEventCancelled: (eventId, cancelledAt) => {
+          const event = this.events.get(eventId);
+          if (event) {
+            this.events.set(eventId, { ...event, status: 'CANCELLED', cancelledAt });
+          }
+          this.setEventStatusOnLots(eventId, 'CANCELLED');
+          return Promise.resolve();
+        },
+        findEventStatuses: (ids) =>
+          Promise.resolve([
+            ...new Set(ids.flatMap((id) => this.ticketTypes.get(id)?.event.status ?? [])),
+          ]),
       },
       inventory: {
         tryReserve: (id, quantity) => {
@@ -341,6 +402,26 @@ export class FakeDatabase implements UnitOfWork {
               .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
               .slice(0, limit),
           ),
+        lockActiveByEvent: (eventId) => {
+          const active = this.allOrders()
+            .filter(
+              (order) =>
+                (order.status === 'PENDING' ||
+                  order.status === 'PROCESSING' ||
+                  order.status === 'PAID') &&
+                order.items.some((item) => this.eventIdOf(item.ticketTypeId) === eventId),
+            )
+            .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+          this.locks.push(...active.map((order) => order.id));
+          return Promise.resolve(active);
+        },
+        endReservation: (id, at) => {
+          const order = this.order(id);
+          if (order && order.expiresAt > at) {
+            this.replaceOrder(id, { expiresAt: at });
+          }
+          return Promise.resolve();
+        },
         lockExpiredPending: (now, limit) =>
           Promise.resolve(
             this.orders

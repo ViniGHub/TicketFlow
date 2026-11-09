@@ -1,4 +1,8 @@
-import { REFUND_ORDER_JOB, SEND_TICKET_EMAIL_JOB } from '@ticketflow/contracts';
+import {
+  REFUND_ORDER_JOB,
+  SEND_EVENT_CANCELLED_EMAIL_JOB,
+  SEND_TICKET_EMAIL_JOB,
+} from '@ticketflow/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { FakeDatabase } from './fake-database.test-helper.js';
@@ -552,5 +556,101 @@ describe('charge.refunded', () => {
     expect(none).toEqual({ status: 'ignored', reason: 'not-ticketflow' });
     expect(missing).toEqual({ status: 'ignored', reason: 'not-ticketflow' });
     expect(db.order(ORDER_ID)?.status).toBe('PAID');
+  });
+});
+
+describe('pagamento de evento cancelado (ADR 0015)', () => {
+  /** Mesmo pedido do setup, com o evento dos lotes já cancelado. */
+  function cancelledSetup(overrides: Partial<Order> = {}) {
+    const context = setup(overrides, { a: 10, b: 10 });
+    context.db.addEvent('evento-1', { status: 'CANCELLED' });
+    return context;
+  }
+
+  const refundJobs = [
+    { type: REFUND_ORDER_JOB, payload: { orderId: ORDER_ID } },
+    { type: SEND_EVENT_CANCELLED_EMAIL_JOB, payload: { orderId: ORDER_ID } },
+  ];
+
+  it('pedido pendente pago depois do cancelamento: pagamento registrado e devolvido, sem ingressos', async () => {
+    const { db, processor } = cancelledSetup();
+
+    const outcome = await processor.process(paid());
+
+    expect(outcome).toEqual({
+      status: 'processed',
+      orderId: ORDER_ID,
+      orderStatus: 'REFUND_PENDING',
+      warning: 'cancelled-event-refund',
+    });
+    expect(db.order(ORDER_ID)).toMatchObject({
+      status: 'REFUND_PENDING',
+      paidAt: EVENT_CREATED_AT,
+      stripePaymentIntentId: 'pi_1',
+    });
+    expect(db.tickets).toEqual([]);
+    expect(db.outbox).toEqual(refundJobs);
+    expect(db.reservations).toEqual([]);
+    expect(db.releases).toEqual([]);
+  });
+
+  it('Pix aprovado depois do cancelamento: PROCESSING vira reembolso', async () => {
+    const { db, processor } = cancelledSetup({
+      status: 'PROCESSING',
+      stripePaymentIntentId: 'pi_1',
+    });
+
+    const outcome = await processor.process(asyncSucceeded());
+
+    expect(outcome).toMatchObject({ orderStatus: 'REFUND_PENDING' });
+    expect(db.tickets).toEqual([]);
+    expect(db.outbox).toEqual(refundJobs);
+  });
+
+  it('Pix ainda pendente continua em PROCESSING: só a aprovação vira reembolso', async () => {
+    const { db, processor } = cancelledSetup();
+
+    const outcome = await processor.process(pending());
+
+    expect(outcome).toMatchObject({ orderStatus: 'PROCESSING' });
+    expect(db.outbox).toEqual([]);
+  });
+
+  it('pagamento tardio de evento cancelado não reserva estoque: vai direto para o reembolso', async () => {
+    const { db, processor } = cancelledSetup({ status: 'EXPIRED' });
+
+    const outcome = await processor.process(paid());
+
+    expect(outcome).toMatchObject({ orderStatus: 'REFUND_PENDING' });
+    expect(db.order(ORDER_ID)).toMatchObject({ paidAt: EVENT_CREATED_AT });
+    expect(db.reservations).toEqual([]);
+    expect(db.outbox).toEqual(refundJobs);
+  });
+
+  it('pedido grátis de evento cancelado: REFUNDED na hora, só o e-mail', async () => {
+    const { db, processor } = cancelledSetup({ totalCents: 0 });
+
+    const outcome = await processor.process(
+      sessionEvent(CHECKOUT_SESSION_COMPLETED, {
+        paymentStatus: 'no_payment_required',
+        paymentIntentId: null,
+      }),
+    );
+
+    expect(outcome).toMatchObject({ orderStatus: 'REFUNDED' });
+    expect(db.tickets).toEqual([]);
+    expect(db.outbox).toEqual([
+      { type: SEND_EVENT_CANCELLED_EMAIL_JOB, payload: { orderId: ORDER_ID } },
+    ]);
+  });
+
+  it('o mesmo pagamento entregue de novo não reembolsa duas vezes', async () => {
+    const { db, processor } = cancelledSetup();
+
+    await processor.process(paid('evt_1'));
+    const again = await processor.process(paid('evt_2'));
+
+    expect(again).toEqual({ status: 'ignored', reason: 'already-paid', orderId: ORDER_ID });
+    expect(db.outbox).toEqual(refundJobs);
   });
 });

@@ -1,6 +1,5 @@
 import { type PrismaClient } from '@ticketflow/db';
-
-import { EventNotFoundError } from './events.errors';
+import { EventNotFoundError } from '@ticketflow/domain';
 
 /**
  * Leitura do organizador sobre o próprio evento (check-in, vendas), sem trava: as escritas do

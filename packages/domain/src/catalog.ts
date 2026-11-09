@@ -17,6 +17,15 @@ export interface Stock {
   available: number;
 }
 
+/** Também para evento de outro organizador: a resposta não revela que ele existe. */
+export class EventNotFoundError extends DomainError {
+  readonly code = 'EVENT_NOT_FOUND';
+
+  constructor() {
+    super('Evento não encontrado.');
+  }
+}
+
 export class TicketTypeNotFoundError extends DomainError {
   readonly code = 'TICKET_TYPE_NOT_FOUND';
 

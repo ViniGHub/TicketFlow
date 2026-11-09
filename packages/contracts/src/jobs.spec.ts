@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  EXPIRE_ORDERS_JOB,
   isOutboxJobType,
   OUTBOX_JOB_TYPES,
+  RECONCILE_STRIPE_JOB,
   REFUND_ORDER_JOB,
   refundOrderPayloadSchema,
   SEND_TICKET_EMAIL_JOB,
@@ -48,5 +50,10 @@ describe('tipos de job da outbox', () => {
     expect(OUTBOX_JOB_TYPES).toEqual(['send-ticket-email', 'refund-order']);
     expect(isOutboxJobType('refund-order')).toBe(true);
     expect(isOutboxJobType('outro-job')).toBe(false);
+  });
+
+  it('os jobs recorrentes não passam pela outbox', () => {
+    expect(isOutboxJobType(EXPIRE_ORDERS_JOB)).toBe(false);
+    expect(isOutboxJobType(RECONCILE_STRIPE_JOB)).toBe(false);
   });
 });

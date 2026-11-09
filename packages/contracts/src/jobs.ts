@@ -30,3 +30,12 @@ export type OutboxJobType = (typeof OUTBOX_JOB_TYPES)[number];
 export function isOutboxJobType(type: string): type is OutboxJobType {
   return OUTBOX_JOB_TYPES.some((known) => known === type);
 }
+
+// Jobs recorrentes (ARCHITECTURE.md, seção 8; etapa 5.3). Quem agenda é o worker, com um
+// job scheduler do BullMQ de id fixo; não passam pela outbox e não têm payload.
+
+/** A cada minuto: expira os pedidos `PENDING` vencidos, expirando antes a sessão no Stripe. */
+export const EXPIRE_ORDERS_JOB = 'expire-orders';
+
+/** A cada 15 min: consulta no Stripe os pedidos esperando pagamento há mais de 10 min. */
+export const RECONCILE_STRIPE_JOB = 'reconcile-stripe';

@@ -23,7 +23,13 @@ export class StripeEventProcessingError extends Error {
 }
 
 /** Motivos de evento ignorado que pedem atenção de quem opera; os outros são rotina. */
-const WARN_REASONS = new Set(['not-ticketflow', 'order-not-found', 'session-mismatch']);
+const WARN_REASONS = new Set([
+  'not-ticketflow',
+  'order-not-found',
+  'session-mismatch',
+  'partial-refund',
+  'not-refundable',
+]);
 
 /** Webhook do Stripe (ARCHITECTURE.md, seção 5, passo 4; ADR 0009). */
 @Injectable()
@@ -75,6 +81,9 @@ export class StripeWebhookService {
     const fields = { stripeEventId: event.id, stripeEventType: event.type, ...outcome };
     if (outcome.status === 'ignored' && WARN_REASONS.has(outcome.reason)) {
       this.logger.warn(fields, 'Evento do Stripe ignorado');
+    } else if (outcome.status === 'processed' && outcome.warning) {
+      // Pagamento tardio (reservado de novo ou a reembolsar) ou reembolso feito pelo painel.
+      this.logger.warn(fields, 'Evento do Stripe processado fora do caminho normal');
     } else {
       this.logger.log(fields, 'Evento do Stripe recebido');
     }

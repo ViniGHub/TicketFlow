@@ -137,6 +137,13 @@ export class PrismaOrderRepository implements OrderRepository {
     return locked.length === 0 ? null : this.findById(id);
   }
 
+  async lockByPaymentIntent(paymentIntentId: string): Promise<Order | null> {
+    const locked = await this.tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM orders WHERE stripe_payment_intent_id = ${paymentIntentId} FOR UPDATE`;
+    const [row] = locked;
+    return row ? this.findById(row.id) : null;
+  }
+
   async lockExpiredPending(now: Date, limit: number): Promise<Order[]> {
     const locked = await this.tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM orders
@@ -199,6 +206,14 @@ export class PrismaTicketRepository implements TicketRepository {
         return { orderId, ticketTypeId, eventId, qrToken };
       }),
     });
+  }
+
+  async voidByOrder(orderId: string, voidedAt: Date): Promise<number> {
+    const { count } = await this.tx.ticket.updateMany({
+      where: { orderId, voidedAt: null },
+      data: { voidedAt },
+    });
+    return count;
   }
 }
 

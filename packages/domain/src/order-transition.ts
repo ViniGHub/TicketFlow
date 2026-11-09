@@ -23,10 +23,17 @@ export async function transitionOrder(
       await inventory.release(ticketTypeId, quantity);
     }
   } else if (effect === 'reserve') {
-    for (const { ticketTypeId, quantity } of items) {
-      if (!(await inventory.tryReserve(ticketTypeId, quantity))) {
-        throw new InsufficientStockError(ticketTypeId);
+    const reserved: typeof items = [];
+    for (const item of items) {
+      if (!(await inventory.tryReserve(item.ticketTypeId, item.quantity))) {
+        // Tudo ou nada: quem chama pode capturar o erro e seguir na mesma transação (pagamento
+        // tardio sem estoque vira reembolso), e aí o rollback não desfaria a reserva parcial.
+        for (const done of reserved) {
+          await inventory.release(done.ticketTypeId, done.quantity);
+        }
+        throw new InsufficientStockError(item.ticketTypeId);
       }
+      reserved.push(item);
     }
   }
 

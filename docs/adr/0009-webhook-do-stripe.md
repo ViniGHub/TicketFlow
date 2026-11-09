@@ -1,6 +1,7 @@
 # 0009. Webhook do Stripe: fonte da verdade do pagamento, numa transação idempotente
 
-- **Status:** aceito
+- **Status:** aceito; a decisão 8 foi substituída pelo
+  [ADR 0010](0010-pagamento-assincrono-tardio-e-reembolso.md)
 - **Data:** 2026-11-06
 - **Etapa:** 4.2 (ROADMAP.md)
 
@@ -67,9 +68,10 @@ o evento marcado como processado sem ter sido.
      aviso do Stripe costuma chegar com o pedido já fechado. Quem trava o pedido primeiro
      devolve o estoque; o outro encontra o pedido fora de `PENDING` e não devolve de novo.
 
-8. **Pagamento tardio responde 500 até a etapa 4.3.** Um pagamento confirmado para pedido que não
-   espera mais por ele (`EXPIRED`, ou de outra sessão) não é registrado: o Stripe reenvia, e a
-   4.3 troca o erro pelo tratamento (re-reservar ou reembolsar).
+8. **Pagamento tardio responde 500 até a etapa 4.3** (substituída pelo ADR 0010, que trata o
+   pagamento tardio). Um pagamento confirmado para pedido que não espera mais por ele
+   (`EXPIRED`, ou de outra sessão) não é registrado: o Stripe reenvia, e a 4.3 troca o erro
+   pelo tratamento (re-reservar ou reembolsar).
    - Descartado: registrar e ignorar. O comprador teria pago e o evento se perderia, sem
      ingresso e sem reembolso.
 9. **O payload do job leva só o id do pedido** (`packages/contracts`, `jobs.ts`). O job lê os

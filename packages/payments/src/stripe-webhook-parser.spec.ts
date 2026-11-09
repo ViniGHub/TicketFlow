@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { InvalidWebhookSignatureError, StripeWebhookParser } from './stripe-webhook-parser.js';
-import { checkoutSessionEvent, signWebhook } from './testing/stripe-webhook-events.js';
+import {
+  chargeRefundedEvent,
+  checkoutSessionEvent,
+  signWebhook,
+} from './testing/stripe-webhook-events.js';
 
 const SECRET = 'whsec_segredo_de_teste';
 const orderId = '0193a4f2-0000-7000-8000-000000000001';
@@ -73,6 +77,7 @@ describe('conversão do evento', () => {
         paymentIntentId: 'pi_test_cs_test_1',
         url: null,
       },
+      charge: null,
     });
   });
 
@@ -87,21 +92,66 @@ describe('conversão do evento', () => {
     });
   });
 
-  it('evento que não é de Checkout Session vem sem sessão', () => {
+  it('evento que não é de Checkout Session nem de charge vem sem os dois', () => {
     const event = {
       id: 'evt_2',
       object: 'event',
-      type: 'charge.succeeded',
+      type: 'customer.created',
       created: Math.floor(created.getTime() / 1000),
-      data: { object: { id: 'ch_1', object: 'charge' } },
+      data: { object: { id: 'cus_1', object: 'customer' } },
     };
     const { body, signature } = signWebhook(event, SECRET);
 
     expect(parser.parse(body, signature)).toEqual({
       id: 'evt_2',
-      type: 'charge.succeeded',
+      type: 'customer.created',
       createdAt: created,
       session: null,
+      charge: null,
+    });
+  });
+
+  it('charge.refunded traz a charge, com o PaymentIntent e o reembolso total', () => {
+    const event = chargeRefundedEvent({
+      id: 'evt_3',
+      created,
+      chargeId: 'ch_1',
+      paymentIntentId: 'pi_1',
+    });
+    const { body, signature } = signWebhook(event, SECRET);
+
+    expect(parser.parse(body, signature)).toEqual({
+      id: 'evt_3',
+      type: 'charge.refunded',
+      createdAt: created,
+      session: null,
+      charge: { id: 'ch_1', paymentIntentId: 'pi_1', fullyRefunded: true },
+    });
+  });
+
+  it('reembolso parcial vem com fullyRefunded false', () => {
+    const event = chargeRefundedEvent({
+      paymentIntentId: 'pi_1',
+      amountCents: 10_000,
+      amountRefundedCents: 4_000,
+    });
+    const { body, signature } = signWebhook(event, SECRET);
+
+    expect(parser.parse(body, signature).charge).toMatchObject({ fullyRefunded: false });
+  });
+
+  it('charge sem PaymentIntent, ou com ele expandido, vem com o id certo', () => {
+    const withoutIntent = signWebhook(chargeRefundedEvent({ paymentIntentId: null }), SECRET);
+    const expanded = chargeRefundedEvent({ paymentIntentId: null });
+    const data = expanded['data'] as { object: Record<string, unknown> };
+    data.object['payment_intent'] = { id: 'pi_expandido', object: 'payment_intent' };
+    const withExpanded = signWebhook(expanded, SECRET);
+
+    expect(parser.parse(withoutIntent.body, withoutIntent.signature).charge).toMatchObject({
+      paymentIntentId: null,
+    });
+    expect(parser.parse(withExpanded.body, withExpanded.signature).charge).toMatchObject({
+      paymentIntentId: 'pi_expandido',
     });
   });
 

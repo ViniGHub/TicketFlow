@@ -1,4 +1,4 @@
-import { type PaymentEvent } from '@ticketflow/domain';
+import { type ChargeState, type PaymentEvent } from '@ticketflow/domain';
 import Stripe from 'stripe';
 
 import { ticketflowOrderIdOf, toSessionState } from './stripe-payment-gateway.js';
@@ -48,6 +48,7 @@ function toPaymentEvent(event: Stripe.Event): PaymentEvent {
     type: event.type,
     createdAt: new Date(event.created * 1000),
     session: isCheckoutSessionEvent(event) ? sessionOf(event.data.object) : null,
+    charge: isChargeEvent(event) ? chargeOf(event.data.object) : null,
   };
 }
 
@@ -64,4 +65,31 @@ function isCheckoutSessionEvent(event: Stripe.Event): event is CheckoutSessionEv
 /** Sessão de outra integração na mesma conta não vira decisão sobre pedido nenhum. */
 function sessionOf(session: Stripe.Checkout.Session): PaymentEvent['session'] {
   return ticketflowOrderIdOf(session) === null ? null : toSessionState(session);
+}
+
+type ChargeEvent =
+  | Stripe.ChargeCapturedEvent
+  | Stripe.ChargeExpiredEvent
+  | Stripe.ChargeFailedEvent
+  | Stripe.ChargePendingEvent
+  | Stripe.ChargeRefundedEvent
+  | Stripe.ChargeSucceededEvent
+  | Stripe.ChargeUpdatedEvent;
+
+function isChargeEvent(event: Stripe.Event): event is ChargeEvent {
+  return event.data.object.object === 'charge';
+}
+
+/**
+ * O pagamento por trás do evento, ligado ao pedido pelo PaymentIntent (ADR 0010). `refunded`
+ * só fica `true` quando o valor inteiro foi devolvido.
+ */
+function chargeOf(charge: Stripe.Charge): ChargeState {
+  const paymentIntent = charge.payment_intent;
+  return {
+    id: charge.id,
+    paymentIntentId:
+      typeof paymentIntent === 'string' ? paymentIntent : (paymentIntent?.id ?? null),
+    fullyRefunded: charge.refunded === true,
+  };
 }

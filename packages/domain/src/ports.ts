@@ -100,6 +100,12 @@ export interface OrderRepository {
   lockById(id: string): Promise<Order | null>;
 
   /**
+   * Trava o pedido pago com este PaymentIntent (`stripe_payment_intent_id` é único). Para os
+   * eventos de charge, que não trazem a sessão nem o pedido (ADR 0010).
+   */
+  lockByPaymentIntent(paymentIntentId: string): Promise<Order | null>;
+
+  /**
    * Trava até `limit` pedidos `PENDING` com `expires_at < now`, pulando os que outra transação
    * já travou (`FOR UPDATE SKIP LOCKED`). `PROCESSING` nunca entra: ver seção 4.
    */
@@ -145,6 +151,12 @@ export interface NewTicket {
 export interface TicketRepository {
   /** Emite os ingressos, na mesma transação da mudança do pedido para `PAID`. */
   createMany(tickets: readonly NewTicket[]): Promise<void>;
+
+  /**
+   * Anula os ingressos ainda válidos do pedido (`voided_at`), na transação do reembolso: o
+   * check-in recusa ingresso anulado (seção 9). Devolve quantos foram anulados.
+   */
+  voidByOrder(orderId: string, voidedAt: Date): Promise<number>;
 }
 
 /** Eventos do Stripe já processados (seção 7). */
@@ -195,10 +207,18 @@ export interface CheckoutSessionState {
   url: string | null;
 }
 
+/** Charge de um evento `charge.*`: o pagamento em si, ligado ao pedido pelo PaymentIntent. */
+export interface ChargeState {
+  id: string;
+  paymentIntentId: string | null;
+  /** O valor inteiro foi devolvido (`refunded` do Stripe); reembolso parcial é `false`. */
+  fullyRefunded: boolean;
+}
+
 /**
  * Evento do Stripe com a assinatura já conferida (seção 5, passo 4). `session` vem preenchida
- * nos eventos de Checkout Session de um pedido do TicketFlow; é `null` nos outros tipos e nas
- * sessões sem `order_id`.
+ * nos eventos de Checkout Session de um pedido do TicketFlow, e é `null` nos outros tipos e nas
+ * sessões sem `order_id`. `charge` vem preenchida nos eventos `charge.*`.
  */
 export interface PaymentEvent {
   id: string;
@@ -206,6 +226,7 @@ export interface PaymentEvent {
   /** Quando o Stripe gerou o evento. */
   createdAt: Date;
   session: CheckoutSessionState | null;
+  charge: ChargeState | null;
 }
 
 /** Resultado de expirar uma sessão: `complete` quer dizer que o pagamento venceu a corrida. */

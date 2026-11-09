@@ -80,17 +80,17 @@ Todos os valores monetários em **centavos** (inteiro). Datas gravadas em UTC
 sequenciais), exceto `stripe_events`, cuja chave é o id do evento no Stripe. O schema fica em
 `packages/db/prisma/schema.prisma` ([ADR 0002](docs/adr/0002-convencoes-do-modelo-de-dados.md)).
 
-| Tabela           | Campos principais                                                                                                                                                                                                                                                              |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `users`          | id, email (unique), password_hash, name, roles (`BUYER`, `ORGANIZER`; array, um usuário pode ter os dois), created_at                                                                                                                                                          |
-| `refresh_tokens` | id, user_id → users, **family_id** (todos os tokens da mesma cadeia de rotação), token_hash (unique), expires_at, revoked_at (nullable), replaced_by → refresh_tokens (unique, nullable), created_at                                                                           |
-| `events`         | id, organizer_id → users, title, description, venue, **timezone** (IANA, ex. `America/Sao_Paulo`), starts_at, status (`DRAFT` \| `PUBLISHED` \| `CANCELLED`), cancelled_at, created_at                                                                                         |
-| `ticket_types`   | id, event_id → events, name, price_cents, total, available, sales_start, sales_end, max_per_order. **CHECK (available >= 0 AND available <= total)**, **CHECK (price_cents >= 0)**                                                                                             |
-| `orders`         | id, user_id → users, status, total_cents, currency (`BRL`), idempotency_key (nullable), request_hash (nullable), stripe_session_id (unique, nullable), stripe_payment_intent_id (nullable), expires_at, paid_at, created_at, updated_at. **UNIQUE (user_id, idempotency_key)** |
-| `order_items`    | id, order_id → orders, ticket_type_id → ticket_types, quantity (CHECK > 0), unit_price_cents. **UNIQUE (order_id, ticket_type_id)**                                                                                                                                            |
-| `tickets`        | id, order_id → orders, ticket_type_id, **event_id** → events (desnormalizado para o check-in), qr_token (unique, aleatório), emailed_at (nullable), checked_in_at (nullable), voided_at (nullable)                                                                             |
-| `stripe_events`  | event_id (PK, id do evento Stripe), type, processed_at                                                                                                                                                                                                                         |
-| `outbox`         | id, type (ex. `send-ticket-email`), payload (jsonb), created_at, published_at (nullable), attempts                                                                                                                                                                             |
+| Tabela           | Campos principais                                                                                                                                                                                                                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`          | id, email (unique), password_hash, name, roles (`BUYER`, `ORGANIZER`; array, um usuário pode ter os dois), created_at                                                                                                                                                                  |
+| `refresh_tokens` | id, user_id → users, **family_id** (todos os tokens da mesma cadeia de rotação), token_hash (unique), expires_at, revoked_at (nullable), replaced_by → refresh_tokens (unique, nullable), created_at                                                                                   |
+| `events`         | id, organizer_id → users, title, description, venue, **timezone** (IANA, ex. `America/Sao_Paulo`), starts_at, status (`DRAFT` \| `PUBLISHED` \| `CANCELLED`), cancelled_at, created_at                                                                                                 |
+| `ticket_types`   | id, event_id → events, name, price_cents, total, available, sales_start, sales_end, max_per_order. **CHECK (available >= 0 AND available <= total)**, **CHECK (price_cents >= 0)**                                                                                                     |
+| `orders`         | id, user_id → users, status, total_cents, currency (`BRL`), idempotency_key (nullable), request_hash (nullable), stripe_session_id (unique, nullable), stripe_payment_intent_id (unique, nullable), expires_at, paid_at, created_at, updated_at. **UNIQUE (user_id, idempotency_key)** |
+| `order_items`    | id, order_id → orders, ticket_type_id → ticket_types, quantity (CHECK > 0), unit_price_cents. **UNIQUE (order_id, ticket_type_id)**                                                                                                                                                    |
+| `tickets`        | id, order_id → orders, ticket_type_id, **event_id** → events (desnormalizado para o check-in), qr_token (unique, aleatório), emailed_at (nullable), checked_in_at (nullable), voided_at (nullable)                                                                                     |
+| `stripe_events`  | event_id (PK, id do evento Stripe), type, processed_at                                                                                                                                                                                                                                 |
+| `outbox`         | id, type (ex. `send-ticket-email`), payload (jsonb), created_at, published_at (nullable), attempts                                                                                                                                                                                     |
 
 Índices:
 
@@ -140,6 +140,12 @@ O efeito de cada uma no estoque (devolve, reserva de novo ou nada) também fica 
 Pedidos em `PROCESSING` **não** são expirados pelo job: o estoque fica reservado até o
 Stripe confirmar ou recusar o pagamento.
 
+O Stripe não garante a ordem dos eventos, então cada um confere o status do pedido travado: a
+aprovação ou a recusa do pagamento assíncrono também valem para um pedido ainda `PENDING`, e o
+`completed` que chega depois é ignorado. Um reembolso feito pelo painel do Stripe num pedido
+`PAID` passa por `REFUND_PENDING` e `REFUNDED` na mesma transação e anula os ingressos
+([ADR 0010](docs/adr/0010-pagamento-assincrono-tardio-e-reembolso.md)).
+
 ## 5. Fluxo de pagamento
 
 1. **Checkout**: `POST /orders` com itens `[ {ticketTypeId, quantity} ]` e header opcional
@@ -183,9 +189,10 @@ Stripe confirmar ou recusar o pagamento.
      evento. Nunca registrar o evento como processado sem processar.
    - Eventos tratados: `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
      `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`
-     (os dois de pagamento assíncrono e o reembolso a partir da etapa 4.3). Demais tipos:
-     grava em `stripe_events` e responde 200. Sessão que não é de um pedido do TicketFlow,
-     pedido inexistente e sessão diferente da gravada no pedido também são gravados sem efeito.
+     (o pedido é achado pelo `stripe_payment_intent_id`, já que a charge não traz a sessão).
+     Demais tipos: grava em `stripe_events` e responde 200. Sessão que não é de um pedido do
+     TicketFlow, pedido inexistente, sessão diferente da gravada no pedido (sem dinheiro
+     envolvido) e reembolso parcial também são gravados sem efeito.
    - Responde 200 rápido; trabalho pesado (QR code, e-mail) sai pela outbox.
 5. **Página de sucesso**: apenas consulta `GET /orders/:id` e mostra o status atual.
    Se ainda `PENDING`/`PROCESSING`, faz polling por alguns segundos. **Nunca** marca como pago.
@@ -220,10 +227,14 @@ possível (ex.: alguém expira o pedido manualmente no banco, ou um bug). Se um 
 pagamento confirmado chegar para um pedido já `EXPIRED`:
 
 - Tentar reservar o estoque novamente. Se houver, marcar `PAID` e emitir os ingressos.
-- Se não houver, marcar `REFUND_PENDING`, gravar na outbox um job `refund-order` (que chama
-  `stripe.refunds.create` com `idempotencyKey = refund:<order.id>`) e registrar log `warn`
-  explícito. O pedido vira `REFUNDED` quando chegar `charge.refunded`.
-- Este cenário precisa de teste de integração.
+- Se não houver, marcar `REFUND_PENDING` (com o PaymentIntent e `paid_at`), gravar na outbox
+  um job `refund-order` (que chama `stripe.refunds.create` com
+  `idempotencyKey = refund:<order.id>`) e registrar log `warn` explícito. O pedido vira
+  `REFUNDED` quando chegar `charge.refunded`.
+- A re-reserva é tudo ou nada: se um lote falta, os já reservados voltam antes de o pedido
+  seguir para o reembolso, na mesma transação.
+- Os dois caminhos têm teste de integração
+  ([ADR 0010](docs/adr/0010-pagamento-assincrono-tardio-e-reembolso.md)).
 
 ### Cancelamento de evento
 
@@ -348,7 +359,8 @@ do front-end.
   outro comprador → 404.
 - Rate limit de 20 pedidos por minuto por usuário (criação e cancelamento somados).
 
-**Webhook do Stripe** ([ADR 0009](docs/adr/0009-webhook-do-stripe.md)):
+**Webhook do Stripe** (ADRs [0009](docs/adr/0009-webhook-do-stripe.md) e
+[0010](docs/adr/0010-pagamento-assincrono-tardio-e-reembolso.md)):
 
 - `POST /webhooks/stripe` não tem login, rate limit nem Swagger: quem autentica é a assinatura,
   conferida sobre o corpo cru. Sem assinatura válida → 400; evento processado, repetido ou
@@ -357,8 +369,14 @@ do front-end.
   a `PAID`, emite um ingresso por unidade e grava `send-ticket-email` na outbox, com só o id do
   pedido no payload. `checkout.session.expired` leva o pedido `PENDING` a `EXPIRED` e devolve o
   estoque; pedido já cancelado ou expirado fica como está.
-- Pagamento confirmado para pedido que já saiu de `PENDING` (pagamento tardio) responde 500
-  sem registrar o evento até a etapa 4.3, que o trata.
+- Pagamento assíncrono: sessão concluída sem pagamento leva a `PROCESSING`; a aprovação leva a
+  `PAID` com ingressos, e a recusa a `EXPIRED` com o estoque de volta.
+- Pagamento tardio (pedido `EXPIRED`): reserva de novo e vira `PAID`, ou vai para
+  `REFUND_PENDING` com `refund-order` na outbox quando o estoque acabou.
+- `charge.refunded` com o valor inteiro leva `REFUND_PENDING` a `REFUNDED` e anula os
+  ingressos (`voided_at`).
+- Pagamento de pedido `CANCELLED` ou de sessão diferente da gravada no pedido responde 500 sem
+  registrar o evento: nenhum dos dois tem caminho possível, e alguém precisa olhar.
 
 **Check-in** é atômico:
 
@@ -485,6 +503,9 @@ Registrados:
 9. `0009-webhook-do-stripe.md`: webhook como fonte da verdade, uma transação por evento,
    `ON CONFLICT DO NOTHING` em `stripe_events`, 5xx em qualquer falha, eventos alheios gravados
    sem efeito
+10. `0010-pagamento-assincrono-tardio-e-reembolso.md`: eventos fora de ordem, re-reserva tudo
+    ou nada no pagamento tardio, pedido pelo PaymentIntent no `charge.refunded`, reembolso pelo
+    painel
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

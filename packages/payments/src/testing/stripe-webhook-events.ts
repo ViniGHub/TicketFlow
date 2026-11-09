@@ -71,3 +71,45 @@ export function signWebhook(
   });
   return { body, signature };
 }
+
+export interface ChargeRefundedEventOptions {
+  /** `evt_...`. Padrão: um id novo a cada chamada. */
+  id?: string;
+  /** Data do evento. Padrão: agora. */
+  created?: Date;
+  chargeId?: string;
+  paymentIntentId: string | null;
+  /** Valor da charge, em centavos. */
+  amountCents?: number;
+  /** Quanto já foi devolvido. Padrão: o valor inteiro. */
+  amountRefundedCents?: number;
+}
+
+/** Corpo de um evento `charge.refunded`, com só os campos que o TicketFlow lê. */
+export function chargeRefundedEvent({
+  id = `evt_test_${Date.now()}_${++sequence}`,
+  created = new Date(),
+  chargeId = `ch_test_${++sequence}`,
+  paymentIntentId,
+  amountCents = 10_000,
+  amountRefundedCents = amountCents,
+}: ChargeRefundedEventOptions): Record<string, unknown> {
+  return {
+    id,
+    object: 'event',
+    type: 'charge.refunded',
+    created: Math.floor(created.getTime() / 1000),
+    livemode: false,
+    data: {
+      object: {
+        id: chargeId,
+        object: 'charge',
+        amount: amountCents,
+        amount_refunded: amountRefundedCents,
+        refunded: amountRefundedCents >= amountCents,
+        payment_intent: paymentIntentId,
+        currency: 'brl',
+      },
+    },
+  };
+}

@@ -179,6 +179,22 @@ describe('UNIQUE (user_id, idempotency_key) em orders', () => {
   });
 });
 
+describe('UNIQUE stripe_payment_intent_id em orders', () => {
+  it('aceita vários pedidos sem PaymentIntent e recusa o mesmo em dois pedidos', async () => {
+    const user = await createUser();
+    const first = await createOrder(user.id);
+    const second = await createOrder(user.id);
+    const setPaymentIntent = (orderId: string) =>
+      sql.query(`UPDATE orders SET stripe_payment_intent_id = 'pi_1' WHERE id = $1`, [orderId]);
+
+    await setPaymentIntent(first.id);
+    await expect(setPaymentIntent(second.id)).rejects.toMatchObject({
+      code: UNIQUE_VIOLATION,
+      constraint: 'orders_stripe_payment_intent_id_key',
+    });
+  });
+});
+
 describe('stripe_events', () => {
   it('rejeita o mesmo event_id duas vezes', async () => {
     const insert = () =>

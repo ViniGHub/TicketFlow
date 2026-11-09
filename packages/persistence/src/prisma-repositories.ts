@@ -162,6 +162,20 @@ export class PrismaOrderRepository implements OrderRepository {
     return rows.map(toDomainOrder);
   }
 
+  async findAwaitingPayment(createdBefore: Date, limit: number): Promise<Order[]> {
+    const rows = await this.tx.order.findMany({
+      where: {
+        status: { in: ['PENDING', 'PROCESSING'] },
+        stripeSessionId: { not: null },
+        createdAt: { lt: createdBefore },
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+      include: withItems,
+    });
+    return rows.map(toDomainOrder);
+  }
+
   async updateStatus(
     id: string,
     status: OrderStatus,

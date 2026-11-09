@@ -11,7 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'v
 import { call, type CookieJar, sessionFor, startTestApp, type TestApp } from '../../test/app';
 import { DAY_MS, fixtures, fromNow, HOUR_MS } from '../../test/fixtures';
 
-import { PrismaUnitOfWork } from './persistence/prisma-unit-of-work';
+import { PrismaUnitOfWork } from '@ticketflow/persistence';
 
 const databaseUrl = inject('databaseUrl');
 const redisUrl = inject('redisUrl');

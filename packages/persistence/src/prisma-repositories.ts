@@ -17,7 +17,7 @@ import {
   type TicketTypeLabel,
 } from '@ticketflow/domain';
 
-import { toDomainOrder, withItems } from '../orders.mapper';
+import { toDomainOrder, withItems } from './order-mapping.js';
 
 // Implementações Prisma das portas do domínio (packages/domain/src/ports.ts). Cada instância
 // fica presa à transação recebida do PrismaUnitOfWork.

@@ -7,7 +7,7 @@ import {
 } from '@ticketflow/domain';
 import { InvalidWebhookSignatureError, StripeWebhookParser } from '@ticketflow/payments';
 
-import { PrismaUnitOfWork } from '../orders/persistence/prisma-unit-of-work';
+import { PrismaUnitOfWork } from '@ticketflow/persistence';
 import { STRIPE_WEBHOOK_PARSER } from '../payments/payments.module';
 
 /**

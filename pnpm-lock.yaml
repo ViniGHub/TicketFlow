@@ -233,6 +233,9 @@ importers:
       '@ticketflow/payments':
         specifier: workspace:*
         version: link:../../packages/payments
+      '@ticketflow/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -540,6 +543,31 @@ importers:
       stripe:
         specifier: ^23.1.0
         version: 23.1.0(@types/node@24.19.2)
+    devDependencies:
+      '@ticketflow/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
+      eslint:
+        specifier: ^10.12.0
+        version: 10.12.0(jiti@2.6.1)
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.4
+        version: 5.0.4(@types/node@24.19.2)(vite@8.3.4(@types/node@24.19.2)(jiti@2.6.1)(yaml@2.9.1))
+
+  packages/persistence:
+    dependencies:
+      '@ticketflow/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ticketflow/domain':
+        specifier: workspace:*
+        version: link:../domain
     devDependencies:
       '@ticketflow/config':
         specifier: workspace:*

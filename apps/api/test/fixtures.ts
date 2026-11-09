@@ -1,7 +1,12 @@
 // Dados dos testes de integração, gravados direto no banco (sem passar pela API).
 import { type Role } from '@ticketflow/contracts';
 import { type PrismaClient } from '@ticketflow/db';
-import { type Order, placeOrder } from '@ticketflow/domain';
+import {
+  CHECKOUT_SESSION_COMPLETED,
+  type Order,
+  placeOrder,
+  StripeEventProcessor,
+} from '@ticketflow/domain';
 
 import { PrismaUnitOfWork } from '../src/orders/persistence/prisma-unit-of-work';
 import { orderRequestHash } from '../src/orders/request-hash';
@@ -95,10 +100,43 @@ export function fixtures(prisma: PrismaClient) {
     return order;
   }
 
+  /**
+   * Pedido pago como no fluxo real: criado pelo caso de uso e pago pelo processador do webhook
+   * (ingressos e e-mail na outbox), sem passar pelo Stripe.
+   */
+  async function createPaidOrder(userId: string, items: OrderItemInput[]): Promise<Order> {
+    const order = await createOrder(userId, items);
+    const sessionId = `cs_test_${order.id}`;
+    await prisma.order.update({ where: { id: order.id }, data: { stripeSessionId: sessionId } });
+    await new StripeEventProcessor(new PrismaUnitOfWork(prisma)).process({
+      id: `evt_fixture_${order.id}`,
+      type: CHECKOUT_SESSION_COMPLETED,
+      createdAt: new Date(),
+      session: {
+        id: sessionId,
+        orderId: order.id,
+        status: 'complete',
+        paymentStatus: 'paid',
+        paymentIntentId: `pi_test_${order.id}`,
+        url: null,
+      },
+      charge: null,
+    });
+    return order;
+  }
+
   async function availableOf(ticketTypeId: string): Promise<number> {
     const lot = await prisma.ticketType.findUniqueOrThrow({ where: { id: ticketTypeId } });
     return lot.available;
   }
 
-  return { createUser, createBuyer, createEvent, createLot, createOrder, availableOf };
+  return {
+    createUser,
+    createBuyer,
+    createEvent,
+    createLot,
+    createOrder,
+    createPaidOrder,
+    availableOf,
+  };
 }

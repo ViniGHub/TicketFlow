@@ -10,4 +10,7 @@ regexes = [
   '''^troque-isto-por-um-segredo-com-32-caracteres-ou-mais$''',
   # JWT_SECRET dos testes de integração da API (apps/api/test/app.ts).
   '''^segredo-de-teste-com-mais-de-32-caracteres$''',
+  # qr_token de exemplo, sem ingresso nenhum: Swagger (packages/contracts/src/tickets.ts) e
+  # testes de ingressos e check-in (etapa 4.4).
+  '''^bUHxdPPHbw2IBWVB1hgF_zY5KMs2HpWEq_QA7GHi0iw$''',
 ]

@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   contentIdOf,
-  escapeHtml,
-  formatEventDate,
   renderTicketEmail,
   type TicketEmailEvent,
   type TicketEmailTicket,
@@ -123,20 +121,5 @@ describe('e-mail de ingressos', () => {
 
     expect(message.subject).toBe('Seus ingressos para 2 eventos');
     expect(message.html.indexOf('Abertura')).toBeLessThan(message.html.indexOf('Show de Teste'));
-  });
-});
-
-describe('formatação', () => {
-  it('a mesma hora UTC aparece no horário local de cada evento', () => {
-    const at = new Date('2026-12-20T23:00:00Z');
-
-    expect(formatEventDate(at, 'America/Sao_Paulo')).toContain('20:00');
-    expect(formatEventDate(at, 'America/Manaus')).toContain('19:00');
-  });
-
-  it('escapa os caracteres especiais do HTML', () => {
-    expect(escapeHtml(`<a href="x">'&'</a>`)).toBe(
-      '&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;',
-    );
   });
 });

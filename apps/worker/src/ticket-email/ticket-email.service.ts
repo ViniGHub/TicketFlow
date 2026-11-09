@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PrismaClient } from '@ticketflow/db';
 
-import { EMAIL_SENDER, type EmailSender } from './email-sender';
+import { EMAIL_SENDER, type EmailSender } from '../email/email-sender';
+
 import { renderTicketEmail } from './render-ticket-email';
 
 export type TicketEmailResult =

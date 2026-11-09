@@ -16,8 +16,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from 'v
 
 import { WorkerModule } from '../worker.module';
 
-import { type EmailMessage } from './email-message';
-import { type EmailSender, SmtpEmailSender } from './email-sender';
+import { type EmailMessage } from '../email/email-message';
+import { type EmailSender, SmtpEmailSender } from '../email/email-sender';
+
 import { TicketEmailService } from './ticket-email.service';
 
 // E-mail de ingressos com Postgres real (ROADMAP, etapa 5.2; ADR 0013).

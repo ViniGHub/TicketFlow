@@ -4,7 +4,7 @@ import {
   Inject,
   Injectable,
   Module,
-  type OnModuleDestroy,
+  type OnApplicationShutdown,
 } from '@nestjs/common';
 import { createPrismaClient, PrismaClient } from '@ticketflow/db';
 
@@ -12,12 +12,16 @@ export interface DatabaseModuleOptions {
   url: string;
 }
 
-/** Fecha o pool de conexões quando a aplicação encerra (SIGTERM ou `app.close()`). */
+/**
+ * Fecha o pool de conexões quando a aplicação encerra (SIGTERM ou `app.close()`). Na última
+ * fase do shutdown: o relay da outbox termina o lote em andamento antes, em
+ * `beforeApplicationShutdown`.
+ */
 @Injectable()
-class PrismaLifecycle implements OnModuleDestroy {
+class PrismaLifecycle implements OnApplicationShutdown {
   constructor(@Inject(PrismaClient) private readonly prisma: PrismaClient) {}
 
-  async onModuleDestroy(): Promise<void> {
+  async onApplicationShutdown(): Promise<void> {
     await this.prisma.$disconnect();
   }
 }

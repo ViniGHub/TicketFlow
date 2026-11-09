@@ -20,12 +20,14 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(
     WorkerModule.register({
       databaseUrl: env.DATABASE_URL,
+      redisUrl: env.REDIS_URL,
       heartbeat: { file: env.WORKER_HEARTBEAT_FILE, intervalMs: HEARTBEAT_INTERVAL_MS },
     }),
     { logger },
   );
 
-  // SIGTERM/SIGINT disparam o shutdown do Nest (fecha conexões e jobs em andamento).
+  // SIGTERM/SIGINT disparam o shutdown do Nest: o relay termina o lote em andamento, depois
+  // fecham as filas e o banco.
   app.enableShutdownHooks();
   logger.log('Worker iniciado', 'Bootstrap');
 }

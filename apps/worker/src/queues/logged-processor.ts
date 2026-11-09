@@ -17,6 +17,12 @@ export abstract class LoggedProcessor extends WorkerHost {
     this.logger = logger ?? new Logger(new.target.name);
   }
 
+  /** Erro de conexão ou interno do worker: o BullMQ reconecta sozinho, aqui só vai para o log. */
+  @OnWorkerEvent('error')
+  onWorkerError(error: Error): void {
+    this.logger.warn({ message: 'Erro no worker da fila', error: error.message });
+  }
+
   @OnWorkerEvent('completed')
   onJobCompleted(job: Job): void {
     this.logger.log({ message: 'Job concluído', ...jobFields(job) });

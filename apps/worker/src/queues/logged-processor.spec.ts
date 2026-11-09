@@ -71,6 +71,14 @@ describe('log dos jobs', () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it('erro de conexão do worker vai para o log como aviso', () => {
+    const { logger, processor } = setup();
+
+    processor.onWorkerError(new Error('ECONNREFUSED'));
+
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ error: 'ECONNREFUSED' }));
+  });
+
   it('falha sem o job registrado também vai para o log de erro', () => {
     const { logger, processor } = setup();
 

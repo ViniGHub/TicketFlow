@@ -43,8 +43,12 @@ produção.
    - falha do transporte sobe, nada é marcado, e o BullMQ tenta de novo com backoff.
 7. **Conexão dos consumidores separada da do produtor.** O worker de um `@Processor` herdaria a
    conexão da fila registrada no BullModule, e a do relay não espera o Redis voltar
-   (ADR 0012). As filas do relay passaram a ser privadas do publicador; os consumidores usam a
-   conexão compartilhada do `BullModule.forRoot`.
+   (ADR 0012). As filas do relay passaram a ser privadas do publicador. Cada módulo consumidor
+   registra a fila que consome (`BullModule.registerQueue`) sem conexão própria, então o worker
+   usa a conexão compartilhada do `BullModule.forRoot`.
+   - O registro é obrigatório: o `BullModule.forRoot` sozinho não traz o explorer do
+     `@nestjs/bullmq`, que transforma o `@Processor` num worker. Sem ele, o consumidor não roda
+     e nada avisa. O teste de subida do worker confere que o consumidor ganhou um worker.
 
 ## Consequências
 
@@ -52,4 +56,9 @@ produção.
 - Os testes de integração conferem a entrega real pelo SMTP de um container do Mailpit, e a
   cadeia inteira, da linha na outbox ao e-mail enviado.
 - O `LoggedProcessor` trata `UnrecoverableError` como falha final: os consumidores das
-  próximas etapas (`refund-order`, 5.4) usam o mesmo caminho para payload inválido.
+  próximas etapas (`refund-order`, 5.4) usam o mesmo caminho para payload inválido. Erros de
+  conexão do worker também vão para o log, como aviso.
+- Com o Redis fora no momento do `SIGTERM`, o fechamento gracioso do worker do BullMQ, que o
+  `@nestjs/bullmq` chama no shutdown, não termina; o container só sai com o `SIGKILL` do
+  orquestrador (`docker stop` espera 10 s). Um limite de tempo próprio para o shutdown fica
+  para a fase 7 (produção).

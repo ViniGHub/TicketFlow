@@ -46,7 +46,8 @@ export class OutboxQueues implements OnApplicationShutdown {
 
 /**
  * Conexão compartilhada dos consumidores (etapas 5.2 em diante), que espera o Redis voltar, e o
- * `JOB_PUBLISHER` do relay, sobre as filas do produtor.
+ * `JOB_PUBLISHER` do relay, sobre as filas do produtor. Cada módulo consumidor registra a fila
+ * que consome (`BullModule.registerQueue`), sem conexão própria.
  */
 @Module({})
 export class QueuesModule {

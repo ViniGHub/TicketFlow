@@ -21,10 +21,23 @@ export const refundOrderPayloadSchema = z.object({ orderId: z.uuid() });
 export type RefundOrderPayload = z.infer<typeof refundOrderPayloadSchema>;
 
 /**
+ * Evento cancelado (etapa 5.4): avisar o comprador de que os ingressos do pedido foram
+ * cancelados e o pagamento, se houve, vai ser devolvido.
+ */
+export const SEND_EVENT_CANCELLED_EMAIL_JOB = 'send-event-cancelled-email';
+
+export const sendEventCancelledEmailPayloadSchema = z.object({ orderId: z.uuid() });
+export type SendEventCancelledEmailPayload = z.infer<typeof sendEventCancelledEmailPayloadSchema>;
+
+/**
  * Tipos de job que o domínio grava na outbox. O relay do worker publica cada um na fila de
  * mesmo nome; tipo fora desta lista não é publicado (etapa 5.1).
  */
-export const OUTBOX_JOB_TYPES = [SEND_TICKET_EMAIL_JOB, REFUND_ORDER_JOB] as const;
+export const OUTBOX_JOB_TYPES = [
+  SEND_TICKET_EMAIL_JOB,
+  REFUND_ORDER_JOB,
+  SEND_EVENT_CANCELLED_EMAIL_JOB,
+] as const;
 export type OutboxJobType = (typeof OUTBOX_JOB_TYPES)[number];
 
 export function isOutboxJobType(type: string): type is OutboxJobType {

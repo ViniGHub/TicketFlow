@@ -49,6 +49,7 @@ ticketflow/
 │   ├── db/                  # Prisma schema, migrations (com SQL manual dos CHECKs), client
 │   ├── domain/              # regras puras: máquina de estados, reserva/expiração, erros de domínio
 │   ├── payments/            # adaptador do Stripe (PaymentGateway) e gateway fake para os testes
+│   ├── persistence/         # repositórios Prisma das portas do domínio (API e worker)
 │   ├── contracts/           # schemas zod e tipos compartilhados (DTOs, payloads de jobs)
 │   ├── config/              # tsconfig base, ESLint (flat config), Prettier, Vitest preset
 │   └── testing/             # helpers de teste: Testcontainers (Postgres, Redis), limpeza de estado
@@ -203,12 +204,19 @@ aprovação ou a recusa do pagamento assíncrono também valem para um pedido ai
    ([ADR 0007](docs/adr/0007-expiracao-e-cancelamento.md)):
    - Sucesso, ou sessão já expirada, ou pedido sem sessão → marca `EXPIRED` e devolve o
      estoque (transação). Se outra execução ou um cancelamento chegou antes, não faz nada.
-   - Stripe responde que a sessão está `complete` → **não** libera estoque; busca a sessão
-     (`sessions.retrieve`) e aplica o mesmo handler do webhook (o pagamento venceu a corrida).
+   - Stripe responde que a sessão está `complete` → **não** libera estoque; o pagamento venceu
+     a corrida, e o job o aplica logo em seguida pela reconciliação do passo 7.
    - Erro transitório do Stripe → deixa para a próxima execução.
 7. **Reconciliação (job `reconcile-stripe`, a cada 15 min)**: para pedidos `PENDING` ou
-   `PROCESSING` com sessão criada há mais de 10 min, consulta a sessão no Stripe e aplica o
-   mesmo handler do webhook. Recupera webhooks perdidos (deploy, endpoint fora do ar).
+   `PROCESSING` com sessão criados há mais de 10 min, em lotes de 100, consulta a sessão no
+   Stripe (`sessions.retrieve`, fora de transação) e aplica o mesmo handler do webhook. Recupera
+   webhooks perdidos (deploy, endpoint fora do ar).
+   - O estado da sessão vira um evento sintético, com id estável por estado
+     (`reconcile:<sessão>:<status>:<payment_status>`), registrado em `stripe_events` como os
+     outros: reconciliar de novo o mesmo estado não muda nada.
+   - Sessão ainda `open` não muda nada.
+   - Se o webhook chega depois, ele é registrado sem efeito
+     ([ADR 0014](docs/adr/0014-expiracao-e-reconciliacao-com-o-stripe.md)).
 
 ### Sobre o TTL da reserva
 
@@ -303,8 +311,8 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
 | `outbox-relay`          | loop contínuo (~1 s)                                                      | publica linhas pendentes da `outbox` no BullMQ                  |
 | `send-ticket-email`     | outbox (pedido virou `PAID`)                                              | gera QR code (PNG) de cada ticket e envia e-mail                |
 | `refund-order`          | outbox (pagamento tardio sem estoque, evento cancelado, reembolso manual) | chama `stripe.refunds.create` com chave de idempotência         |
-| `expire-orders`         | repetível, 1/min                                                          | expira sessões no Stripe e depois os pedidos (seção 5, passo 6) |
-| `reconcile-stripe`      | repetível, a cada 15 min                                                  | recupera webhooks perdidos (seção 5, passo 7)                   |
+| `expire-orders`         | scheduler, 1/min                                                          | expira sessões no Stripe e depois os pedidos (seção 5, passo 6) |
+| `reconcile-stripe`      | scheduler, a cada 15 min                                                  | recupera webhooks perdidos (seção 5, passo 7)                   |
 | `send-reminder` (extra) | 24h antes do evento                                                       | lembrete para compradores                                       |
 
 - Uma fila por tipo de job, com o mesmo nome (`send-ticket-email`, `refund-order`). O relay
@@ -313,8 +321,12 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
 - Tentativas com backoff exponencial: 5, a partir de 2 s. Ao esgotar, o job fica em `failed`
   (a "dead-letter" do BullMQ) e gera log `error`; cada falha anterior gera `warn`, com
   `jobId` e `orderId`. Jobs concluídos ficam 7 dias no Redis, para o `jobId` repetido ser
-  ignorado. Job repetível usa `jobId` fixo, então múltiplas instâncias do worker não duplicam
-  o agendamento.
+  ignorado.
+- Os jobs recorrentes (`expire-orders`, `reconcile-stripe`) usam um job scheduler do BullMQ
+  com id fixo, igual ao nome do job, registrado na subida do worker: várias instâncias não
+  duplicam o agendamento. Cada execução tem uma tentativa só, porque a próxima já vem no
+  intervalo, e ficam só os últimos jobs no Redis
+  ([ADR 0014](docs/adr/0014-expiracao-e-reconciliacao-com-o-stripe.md)).
 - Shutdown gracioso: no `SIGTERM`, o relay termina o lote em andamento, `worker.close()`
   espera os jobs em andamento, e só então as filas e o Prisma fecham.
 - O worker é uma aplicação **NestJS standalone** (`NestFactory.createApplicationContext`) e
@@ -539,6 +551,9 @@ Registrados:
     não espera o Redis, falha que não trava o lote, ordem do shutdown
 13. `0013-email-de-ingressos.md`: um e-mail por pedido com os QR embutidos, `emailed_at` logo
     depois do envio, Resend com `Idempotency-Key`, conexão dos consumidores separada
+14. `0014-expiracao-e-reconciliacao-com-o-stripe.md`: estado da sessão aplicado pelo
+    processador do webhook com um evento sintético, sessão paga na expiração, schedulers do
+    BullMQ com id fixo
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

@@ -91,11 +91,26 @@ export class StripePaymentGateway implements PaymentGateway {
     return toSessionState(await this.stripe.checkout.sessions.retrieve(sessionId));
   }
 
+  /**
+   * Reembolso do pagamento inteiro. Repetir é seguro: com a mesma chave, o Stripe devolve o
+   * reembolso já criado; depois das 24 h da chave, recusa um segundo reembolso porque a
+   * cobrança já foi devolvida, e isso também é sucesso aqui (ADR 0015).
+   */
   async refund(orderId: string, paymentIntentId: string): Promise<void> {
-    await this.stripe.refunds.create(
-      { payment_intent: paymentIntentId, metadata: { order_id: orderId } },
-      { idempotencyKey: refundIdempotencyKey(orderId) },
-    );
+    try {
+      await this.stripe.refunds.create(
+        { payment_intent: paymentIntentId, metadata: { order_id: orderId } },
+        { idempotencyKey: refundIdempotencyKey(orderId) },
+      );
+    } catch (error) {
+      if (
+        error instanceof Stripe.errors.StripeInvalidRequestError &&
+        error.code === 'charge_already_refunded'
+      ) {
+        return;
+      }
+      throw error;
+    }
   }
 
   /**

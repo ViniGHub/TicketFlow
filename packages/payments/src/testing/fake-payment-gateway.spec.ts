@@ -106,6 +106,28 @@ describe('FakePaymentGateway', () => {
     ]);
   });
 
+  it('reembolso repetido não cria outro, como no Stripe', async () => {
+    const gateway = new FakePaymentGateway();
+
+    await gateway.refund('pedido-1', 'pi_1');
+    await gateway.refund('pedido-1', 'pi_1');
+
+    expect(gateway.refundCalls).toHaveLength(2);
+    expect(gateway.refunds).toEqual([
+      { orderId: 'pedido-1', paymentIntentId: 'pi_1', idempotencyKey: 'refund:pedido-1' },
+    ]);
+  });
+
+  it('falha configurada no reembolso não cria nada, e a tentativa seguinte cria', async () => {
+    const gateway = new FakePaymentGateway();
+    gateway.failNextRefund();
+
+    await expect(gateway.refund('pedido-1', 'pi_1')).rejects.toThrow(/indisponível/);
+    await gateway.refund('pedido-1', 'pi_1');
+
+    expect(gateway.refunds).toHaveLength(1);
+  });
+
   it('reset volta ao estado inicial', async () => {
     const gateway = new FakePaymentGateway();
     await gateway.createCheckoutSession(request);

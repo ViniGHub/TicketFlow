@@ -7,6 +7,8 @@ allowBuilds:
   '@prisma/engines': true
   '@swc/core': true
   cpu-features: false
+  # Acelerador nativo opcional do msgpackr (via bullmq): sem ele, o msgpackr usa JavaScript.
+  msgpackr-extract: false
   prisma: true
   protobufjs: false
   ssh2: false

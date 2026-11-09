@@ -15,9 +15,13 @@
     "test:integration": "vitest run --project integration"
   },
   "dependencies": {
+    "@nestjs/bullmq": "^12.0.1",
     "@nestjs/common": "^12.3.3",
     "@nestjs/core": "^12.3.3",
+    "@ticketflow/contracts": "workspace:*",
     "@ticketflow/db": "workspace:*",
+    "bullmq": "^6.7.2",
+    "ioredis": "^6.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "zod": "^4.6.7"
@@ -27,6 +31,7 @@
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.16.18",
     "@ticketflow/config": "workspace:*",
+    "@ticketflow/testing": "workspace:*",
     "@types/node": "^24.19.2",
     "chokidar": "^5.0.0",
     "eslint": "^10.12.0",

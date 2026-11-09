@@ -10,7 +10,7 @@ import { checkInRejection } from '@ticketflow/domain';
 import { z } from 'zod';
 
 import { decodeCursor, encodeCursor, toPage } from '../common/pagination';
-import { EventNotFoundError } from '../events/events.errors';
+import { assertOwnsEvent } from '../events/owned-event';
 
 import { toMyTicketResponse, withTicketDetails } from './tickets.mapper';
 
@@ -45,7 +45,7 @@ export class TicketsService {
     qrToken: string,
     now = new Date(),
   ): Promise<CheckInResponse> {
-    await this.assertOwnsEvent(organizerId, eventId);
+    await assertOwnsEvent(this.prisma, organizerId, eventId);
 
     const { count } = await this.prisma.ticket.updateMany({
       where: { qrToken, eventId, checkedInAt: null, voidedAt: null },
@@ -64,16 +64,5 @@ export class TicketsService {
       select: { id: true, ticketType: { select: { id: true, name: true } } },
     });
     return { ticketId: ticket.id, ticketType: ticket.ticketType, checkedInAt: now.toISOString() };
-  }
-
-  /** Evento de outro organizador responde 404, como se não existisse. */
-  private async assertOwnsEvent(organizerId: string, eventId: string): Promise<void> {
-    const event = await this.prisma.event.findFirst({
-      where: { id: eventId, organizerId },
-      select: { id: true },
-    });
-    if (!event) {
-      throw new EventNotFoundError();
-    }
   }
 }

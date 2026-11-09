@@ -16,6 +16,7 @@ import {
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiQuery,
   ApiTags,
@@ -28,6 +29,8 @@ import {
   eventPageSchema,
   type EventResponse,
   eventResponseSchema,
+  type EventSalesResponse,
+  eventSalesResponseSchema,
   type MyEventsQuery,
   myEventsQuerySchema,
   type Page,
@@ -48,6 +51,7 @@ import {
 } from '../auth/auth.guards';
 import { openApiSchema, uuidParamPipe, ZodValidationPipe } from '../common/validation';
 
+import { EventSalesService } from './event-sales.service';
 import { EventsService } from './events.service';
 import { cursorQueryDocs, limitQueryDocs } from './query-docs';
 import { TicketTypesService } from './ticket-types.service';
@@ -92,7 +96,23 @@ export class OrganizerEventsController {
   constructor(
     private readonly events: EventsService,
     private readonly ticketTypes: TicketTypesService,
+    private readonly sales: EventSalesService,
   ) {}
+
+  @Get(':id/sales')
+  @ApiOkResponse({
+    description:
+      'Vendido, reservado e receita por lote (só pedidos pagos contam como venda) e pedidos ' +
+      'por status.',
+    schema: openApiSchema(eventSalesResponseSchema, 'output'),
+  })
+  @ApiNotFoundResponse({ description: 'Evento inexistente ou de outro organizador.' })
+  salesOf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParamPipe) eventId: string,
+  ): Promise<EventSalesResponse> {
+    return this.sales.forEvent(user.id, eventId);
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)

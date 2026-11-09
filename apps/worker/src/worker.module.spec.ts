@@ -27,6 +27,9 @@ describe('WorkerModule', () => {
       WorkerModule.register({
         // O Prisma só conecta na primeira consulta: a URL não precisa apontar para um banco real.
         databaseUrl: 'postgresql://user:pass@localhost:5432/test',
+        // Porta sem Redis: as filas tentam reconectar em segundo plano, sem impedir a subida.
+        redisUrl: 'redis://127.0.0.1:1',
+        relay: { intervalMs: 60_000 },
         heartbeat: { file, intervalMs: 60_000 },
       }),
       { logger: false },

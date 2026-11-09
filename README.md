@@ -144,8 +144,8 @@ ticketflow/
 | 1. Fundação                 | Monorepo, CI, banco e autenticação        | ✅ concluída |
 | 2. Catálogo                 | Eventos e lotes                           | ✅ concluída |
 | 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ✅ concluída |
-| 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ⏳ em curso  |
-| 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⬜ a fazer   |
+| 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ✅ concluída |
+| 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ⏳ em curso  |
 | 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer   |
 | 7. Produção                 | Observabilidade, deploy e segurança       | ⬜ a fazer   |
 | 8. Portfólio                | Documentação e material de entrevista     | ⬜ a fazer   |
@@ -191,7 +191,7 @@ ticketflow/
 </details>
 
 <details>
-<summary><b>O que já foi entregue na fase 4</b></summary>
+<summary><b>O que foi entregue na fase 4</b></summary>
 
 - ✅ **4.1 Stripe Checkout:** `POST /orders` abre a Checkout Session depois do commit da
   reserva, com a `idempotencyKey` do pedido e parâmetros que só dependem dele, então a
@@ -207,6 +207,9 @@ ticketflow/
   depende do Stripe, com eventos fora de ordem. Pagamento que chega com o pedido já expirado
   reserva o estoque de novo ou vira reembolso, sem vazar a reserva parcial; o `charge.refunded`
   acha o pedido pelo PaymentIntent e anula os ingressos. Cada transição tem teste de integração.
+- ✅ **4.4 Ingressos, check-in e vendas:** `GET /me/tickets` com o QR de cada ingresso,
+  check-in num único `UPDATE` condicional (dez leituras simultâneas do mesmo QR, uma entrada) com
+  o motivo de cada recusa, e vendas por lote e pedidos por status para o organizador dono.
 
 </details>
 

@@ -387,7 +387,22 @@ WHERE qr_token = :token AND event_id = :eventId
 ```
 
 `rowCount = 1` → válido. `rowCount = 0` → consulta o ticket para responder "já utilizado",
-"cancelado" ou "não pertence a este evento".
+"cancelado" ou "não pertence a este evento"
+([ADR 0011](docs/adr/0011-ingressos-check-in-e-vendas.md)):
+
+- Só o organizador dono do evento faz check-in; evento alheio → 404 `EVENT_NOT_FOUND`.
+- `qr_token` inexistente → 404 `TICKET_NOT_FOUND`; de outro evento → 422
+  `TICKET_FROM_OTHER_EVENT`; anulado → 409 `TICKET_VOIDED`; já usado → 409
+  `TICKET_ALREADY_USED`, com o horário. Nesta ordem: o estado de um ingresso de outro evento
+  não é revelado.
+
+**Ingressos e vendas:**
+
+- `GET /me/tickets` (comprador) lista os ingressos válidos, usados e anulados, com o `qrToken`,
+  o lote e o evento, paginados por cursor, os mais novos primeiro.
+- `GET /events/:id/sales` (organizador dono; evento alheio → 404) traz por lote o vendido e a
+  receita (só pedidos `PAID`, com o preço gravado no pedido) e o reservado (`PENDING` e
+  `PROCESSING`), mais os pedidos de cada status, mesmo com zero.
 
 ## 10. Segurança
 
@@ -506,6 +521,8 @@ Registrados:
 10. `0010-pagamento-assincrono-tardio-e-reembolso.md`: eventos fora de ordem, re-reserva tudo
     ou nada no pagamento tardio, pedido pelo PaymentIntent no `charge.refunded`, reembolso pelo
     painel
+11. `0011-ingressos-check-in-e-vendas.md`: check-in num UPDATE condicional, motivo da recusa
+    lido depois, o que conta como venda e reserva
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

@@ -38,6 +38,13 @@ export const DOMAIN_ERROR_STATUS: Readonly<Record<string, HttpStatus>> = {
   IDEMPOTENCY_CONFLICT: HttpStatus.UNPROCESSABLE_ENTITY,
   // 503: o Stripe falhou; como com o Redis fora, o cliente pode tentar de novo (ADR 0008).
   CHECKOUT_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
+
+  // Check-in (ADR 0011). Já usado ou cancelado: 409, o estado do ingresso impede a entrada.
+  TICKET_NOT_FOUND: HttpStatus.NOT_FOUND,
+  TICKET_ALREADY_USED: HttpStatus.CONFLICT,
+  TICKET_VOIDED: HttpStatus.CONFLICT,
+  // 422: o ingresso existe, mas a regra (ser deste evento) não vale para ele.
+  TICKET_FROM_OTHER_EVENT: HttpStatus.UNPROCESSABLE_ENTITY,
 };
 
 /** Código usado quando uma HttpException não informa um `code` próprio. */

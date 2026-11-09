@@ -36,7 +36,7 @@
     "@ticketflow/testing": "workspace:*",
     "@types/node": "^24.19.2",
     "@types/qrcode": "^1.5.6",
-    "chokidar": "^5.0.0",
+    "chokidar": "^6.0.0",
     "eslint": "^10.12.0",
     "typescript": "~6.0.3",
     "vitest": "^5.0.4"

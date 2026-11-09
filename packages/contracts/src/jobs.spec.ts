@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isOutboxJobType,
+  OUTBOX_JOB_TYPES,
   REFUND_ORDER_JOB,
   refundOrderPayloadSchema,
   SEND_TICKET_EMAIL_JOB,
@@ -38,5 +40,13 @@ describe('job refund-order', () => {
 
   it.each([{}, { orderId: 'nao-e-uuid' }])('recusa %j', (payload) => {
     expect(refundOrderPayloadSchema.safeParse(payload).success).toBe(false);
+  });
+});
+
+describe('tipos de job da outbox', () => {
+  it('reconhece só os jobs que o domínio grava', () => {
+    expect(OUTBOX_JOB_TYPES).toEqual(['send-ticket-email', 'refund-order']);
+    expect(isOutboxJobType('refund-order')).toBe(true);
+    expect(isOutboxJobType('outro-job')).toBe(false);
   });
 });

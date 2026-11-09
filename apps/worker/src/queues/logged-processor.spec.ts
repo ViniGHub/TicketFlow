@@ -9,8 +9,13 @@ class TestProcessor extends LoggedProcessor {
   }
 }
 
+/** Como os jobs recorrentes: a conclusão vai para o log só em debug. */
+class QuietProcessor extends TestProcessor {
+  protected override readonly completedLogLevel = 'debug';
+}
+
 function setup() {
-  const logger = { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const logger = { log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
   return { logger, processor: new TestProcessor(logger as never) };
 }
 
@@ -95,6 +100,18 @@ describe('log dos jobs', () => {
     expect(logger.log).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'Job concluído', jobId: 'outbox-1', orderId: 'pedido-1' }),
     );
+  });
+
+  it('consumidor de job recorrente registra a conclusão em debug', () => {
+    const logger = { log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const processor = new QuietProcessor(logger as never);
+
+    processor.onJobCompleted(job(1));
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Job concluído' }),
+    );
+    expect(logger.log).not.toHaveBeenCalled();
   });
 
   it('payload sem orderId: só jobId e fila', () => {

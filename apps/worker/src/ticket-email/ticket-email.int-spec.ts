@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { SEND_TICKET_EMAIL_JOB } from '@ticketflow/contracts';
 import { createPrismaClient } from '@ticketflow/db';
+import { FakePaymentGateway } from '@ticketflow/payments/testing';
 import {
   flushRedis,
   type StartedMailpit,
@@ -260,6 +261,7 @@ describe('worker de pé', () => {
         heartbeat: { file: join(dir, 'worker.heartbeat'), intervalMs: 60_000 },
         relay: { intervalMs: 200 },
         email: { from: FROM, smtp: { host: '127.0.0.1', port: 1 }, sender },
+        payments: { gateway: new FakePaymentGateway() },
       }),
       { logger: false },
     );

@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { isHeartbeatFresh } from './heartbeat/heartbeat';
 import { HeartbeatService } from './heartbeat/heartbeat.service';
+import { ExpireOrdersProcessor } from './stripe-sync/expire-orders.processor';
+import { ReconcileStripeProcessor } from './stripe-sync/reconcile-stripe.processor';
 import { SendTicketEmailProcessor } from './ticket-email/send-ticket-email.processor';
 import { WorkerModule } from './worker.module';
 
@@ -33,6 +35,8 @@ describe('WorkerModule', () => {
         relay: { intervalMs: 60_000 },
         // O nodemailer só conecta ao enviar: a porta não precisa ter servidor.
         email: { from: 'ingressos@ticketflow.local', smtp: { host: '127.0.0.1', port: 1 } },
+        // O cliente do Stripe só conecta na primeira chamada.
+        payments: { secretKey: 'sk_test_123', appUrl: 'http://localhost:3001' },
         heartbeat: { file, intervalMs: 60_000 },
       }),
       { logger: false },
@@ -40,13 +44,21 @@ describe('WorkerModule', () => {
     const heartbeat = app.get(HeartbeatService);
 
     expect(heartbeat.isActive).toBe(true);
-    // O consumidor só processa se o @nestjs/bullmq criou o worker dele.
-    const { worker } = app.get(SendTicketEmailProcessor);
-    expect(worker.name).toBe('send-ticket-email');
+    // Cada consumidor só processa se o @nestjs/bullmq criou o worker dele.
+    const workers = [
+      app.get(SendTicketEmailProcessor),
+      app.get(ExpireOrdersProcessor),
+      app.get(ReconcileStripeProcessor),
+    ].map((processor) => processor.worker);
+    expect(workers.map((worker) => worker.name)).toEqual([
+      'send-ticket-email',
+      'expire-orders',
+      'reconcile-stripe',
+    ]);
 
     // Sem Redis, o close gracioso do worker do BullMQ não termina (ADR 0013): fecha à força
     // aqui, e o close do app reaproveita o fechamento já feito.
-    await worker.close(true);
+    await Promise.all(workers.map((worker) => worker.close(true)));
     expect(await isHeartbeatFresh(file)).toBe(true);
 
     await app.close();

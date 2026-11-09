@@ -17,7 +17,7 @@ import {
   type TicketTypeLabel,
 } from '@ticketflow/domain';
 
-import { toDomainOrder, withItems } from '../orders.mapper';
+import { toDomainOrder, withItems } from './order-mapping.js';
 
 // Implementações Prisma das portas do domínio (packages/domain/src/ports.ts). Cada instância
 // fica presa à transação recebida do PrismaUnitOfWork.
@@ -157,6 +157,20 @@ export class PrismaOrderRepository implements OrderRepository {
     const rows = await this.tx.order.findMany({
       where: { id: { in: locked.map((row) => row.id) } },
       orderBy: { expiresAt: 'asc' },
+      include: withItems,
+    });
+    return rows.map(toDomainOrder);
+  }
+
+  async findAwaitingPayment(createdBefore: Date, limit: number): Promise<Order[]> {
+    const rows = await this.tx.order.findMany({
+      where: {
+        status: { in: ['PENDING', 'PROCESSING'] },
+        stripeSessionId: { not: null },
+        createdAt: { lt: createdBefore },
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: limit,
       include: withItems,
     });
     return rows.map(toDomainOrder);

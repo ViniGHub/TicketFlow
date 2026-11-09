@@ -13,4 +13,5 @@ export * from './place-order.js';
 export * from './ports.js';
 export * from './sales.js';
 export * from './stripe-event-processor.js';
+export * from './stripe-reconciler.js';
 export * from './tickets.js';

@@ -7,6 +7,7 @@ import {
   type OnApplicationShutdown,
 } from '@nestjs/common';
 import { createPrismaClient, PrismaClient } from '@ticketflow/db';
+import { PrismaUnitOfWork } from '@ticketflow/persistence';
 
 export interface DatabaseModuleOptions {
   url: string;
@@ -27,7 +28,8 @@ class PrismaLifecycle implements OnApplicationShutdown {
 }
 
 /**
- * Disponibiliza o `PrismaClient` de packages/db para injeção (`@Inject(PrismaClient)`).
+ * Disponibiliza o `PrismaClient` de packages/db para injeção (`@Inject(PrismaClient)`), e a
+ * unidade de trabalho do domínio sobre ele (`PrismaUnitOfWork`, a mesma da API).
  * O client só abre conexão na primeira consulta, então o worker sobe mesmo com o banco fora.
  */
 @Global()
@@ -38,9 +40,14 @@ export class DatabaseModule {
       module: DatabaseModule,
       providers: [
         { provide: PrismaClient, useFactory: () => createPrismaClient(options.url) },
+        {
+          provide: PrismaUnitOfWork,
+          inject: [PrismaClient],
+          useFactory: (prisma: PrismaClient) => new PrismaUnitOfWork(prisma),
+        },
         PrismaLifecycle,
       ],
-      exports: [PrismaClient],
+      exports: [PrismaClient, PrismaUnitOfWork],
     };
   }
 }

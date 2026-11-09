@@ -6,7 +6,7 @@ import { afterAll, beforeEach, describe, expect, inject, it } from 'vitest';
 
 import { fixtures, fromNow } from '../../test/fixtures';
 
-import { PrismaUnitOfWork } from './persistence/prisma-unit-of-work';
+import { PrismaUnitOfWork } from '@ticketflow/persistence';
 
 // ExpirationService (packages/domain) contra o Postgres real, com os repositórios Prisma da
 // API. O job que o chama a cada minuto é da etapa 5.3. Os pedidos daqui não têm sessão no

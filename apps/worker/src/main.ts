@@ -26,6 +26,7 @@ async function bootstrap(): Promise<void> {
         smtp: { host: env.SMTP_HOST, port: env.SMTP_PORT },
         ...(env.RESEND_API_KEY && { resendApiKey: env.RESEND_API_KEY }),
       },
+      payments: { secretKey: env.STRIPE_SECRET_KEY, appUrl: env.APP_URL },
       heartbeat: { file: env.WORKER_HEARTBEAT_FILE, intervalMs: HEARTBEAT_INTERVAL_MS },
     }),
     { logger },

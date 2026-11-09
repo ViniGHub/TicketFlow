@@ -329,6 +329,18 @@ export class FakeDatabase implements UnitOfWork {
           }
           return Promise.resolve(order ?? null);
         },
+        findAwaitingPayment: (createdBefore, limit) =>
+          Promise.resolve(
+            this.allOrders()
+              .filter(
+                (order) =>
+                  (order.status === 'PENDING' || order.status === 'PROCESSING') &&
+                  order.stripeSessionId !== null &&
+                  order.createdAt < createdBefore,
+              )
+              .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+              .slice(0, limit),
+          ),
         lockExpiredPending: (now, limit) =>
           Promise.resolve(
             this.orders

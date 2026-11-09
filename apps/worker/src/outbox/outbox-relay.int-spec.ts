@@ -8,6 +8,7 @@ import { Logger, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { REFUND_ORDER_JOB, SEND_TICKET_EMAIL_JOB } from '@ticketflow/contracts';
 import { createPrismaClient, type PrismaClient } from '@ticketflow/db';
+import { FakePaymentGateway } from '@ticketflow/payments/testing';
 import { flushRedis, startTcpProxy, type TcpProxy, truncateAllTables } from '@ticketflow/testing';
 import { type Job, Queue } from 'bullmq';
 import { afterAll, afterEach, beforeEach, describe, expect, inject, it, vi } from 'vitest';
@@ -195,6 +196,7 @@ describe('relay da outbox', () => {
             smtp: { host: '127.0.0.1', port: 1 },
             sender: { send: () => Promise.resolve() },
           },
+          payments: { gateway: new FakePaymentGateway() },
         }),
         { logger: false },
       );

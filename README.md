@@ -120,6 +120,7 @@ ticketflow/
     ├── db/           # Prisma: schema, migrations, seed, client
     ├── domain/       # regras de negócio puras
     ├── payments/     # adaptador do Stripe Checkout e gateway fake
+    ├── persistence/  # repositórios Prisma do domínio, da API e do worker
     ├── contracts/    # schemas zod compartilhados
     ├── config/       # tsconfig, ESLint, Prettier, Vitest
     └── testing/      # helpers de Testcontainers
@@ -223,6 +224,11 @@ ticketflow/
 - ✅ **5.2 E-mail com ingressos:** um e-mail por pedido pago, com o QR de cada ingresso embutido
   e a data no fuso do evento. Mailpit (SMTP) em desenvolvimento e Resend em produção, com
   `Idempotency-Key`; `emailed_at` logo depois do envio, então reprocessar o job não reenvia.
+- ✅ **5.3 Expiração e reconciliação com o Stripe:** a cada minuto, o worker expira os pedidos
+  vencidos, sempre expirando a sessão no Stripe antes; se a sessão já estava paga, o pedido vira
+  `PAID` e o estoque fica reservado. A cada 15 min, consulta no Stripe os pedidos que esperam
+  pagamento há mais de 10 min e aplica o resultado pelo mesmo processador do webhook, então um
+  webhook perdido não perde a venda.
 
 </details>
 
@@ -301,6 +307,10 @@ seed de novo (o Prisma 7 não roda o seed automaticamente no reset).
    stripe events resend evt_...
    ```
 
+6. Para ver a reconciliação, desligue o `stripe listen` antes de pagar outro pedido. Ele fica
+   `PENDING` até o job `reconcile-stripe` do worker consultar a sessão, uns 10 a 25 min depois
+   da compra, e aí vira `PAID`, com o e-mail no Mailpit.
+
 A sessão vale 35 minutos (o mínimo do Stripe mais uma folga). Pedidos de R$ 0,01 a R$ 0,49
 são recusados com 422, porque o Stripe só cobra a partir de R$ 0,50 em BRL. O webhook responde
 400 sem assinatura válida e 500 se o processamento falhar, e aí o Stripe reenvia. Eventos de
@@ -365,6 +375,7 @@ As dependências são atualizadas pelo Dependabot.
 | **Máquina de estados do pedido como tabela**    | Cada par origem → destino diz se vale e o que faz com o estoque; API, worker e webhook usam a mesma regra ([ADR 0005](docs/adr/0005-dominio-do-pedido.md))                                        |
 | **Compra trava o evento em modo compartilhado** | Compras não esperam umas pelas outras, mas um cancelamento de evento não passa no meio de uma compra ([ADR 0006](docs/adr/0006-criacao-de-pedido.md))                                             |
 | **Checkout Session depois do commit**           | Chamada ao Stripe fora da transação, com a chave e os parâmetros do pedido; se falha, o pedido é cancelado ([ADR 0008](docs/adr/0008-checkout-session.md))                                        |
+| **Reconciliação pelo processador do webhook**   | Webhook perdido não perde a venda: o estado da sessão vira um evento sintético, deduplicado como os reais ([ADR 0014](docs/adr/0014-expiracao-e-reconciliacao-com-o-stripe.md))                   |
 
 ## 🔮 Depois do MVP
 

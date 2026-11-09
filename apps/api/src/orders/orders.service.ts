@@ -18,7 +18,7 @@ import { API_ENV } from '../config/env.token';
 import { PAYMENT_GATEWAY } from '../payments/payments.module';
 
 import { toOrderResponse } from './orders.mapper';
-import { PrismaUnitOfWork } from './persistence/prisma-unit-of-work';
+import { PrismaUnitOfWork } from '@ticketflow/persistence';
 import { orderRequestHash } from './request-hash';
 
 export interface CreatedOrder {

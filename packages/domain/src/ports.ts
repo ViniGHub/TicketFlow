@@ -111,6 +111,13 @@ export interface OrderRepository {
    */
   lockExpiredPending(now: Date, limit: number): Promise<Order[]>;
 
+  /**
+   * Até `limit` pedidos `PENDING` ou `PROCESSING` com sessão no Stripe, criados antes de
+   * `createdBefore`, os mais antigos primeiro. Sem trava: quem aplica o resultado trava cada
+   * pedido (seção 5, passo 7).
+   */
+  findAwaitingPayment(createdBefore: Date, limit: number): Promise<Order[]>;
+
   /** Grava o novo status. A transição já foi validada pelo domínio (`assertTransition`). */
   updateStatus(id: string, status: OrderStatus, changes?: OrderStatusChanges): Promise<void>;
 

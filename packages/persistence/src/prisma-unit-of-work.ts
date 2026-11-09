@@ -1,5 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { PrismaClient } from '@ticketflow/db';
+import { type PrismaClient } from '@ticketflow/db';
 import { type TransactionalRepositories, type UnitOfWork } from '@ticketflow/domain';
 
 import {
@@ -9,7 +8,7 @@ import {
   PrismaOutboxRepository,
   PrismaStripeEventRepository,
   PrismaTicketRepository,
-} from './prisma-repositories';
+} from './prisma-repositories.js';
 
 /**
  * Limites da transação. Os padrões do Prisma (2 s para conseguir conexão, 5 s de duração),
@@ -18,10 +17,12 @@ import {
  */
 const TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 10_000 } as const;
 
-/** Unidade de trabalho do domínio sobre `prisma.$transaction` (ADR 0005). */
-@Injectable()
+/**
+ * Unidade de trabalho do domínio sobre `prisma.$transaction` (ADR 0005). Classe comum, sem
+ * Nest: a API e o worker a registram como provider (ADR 0014).
+ */
 export class PrismaUnitOfWork implements UnitOfWork {
-  constructor(@Inject(PrismaClient) private readonly prisma: PrismaClient) {}
+  constructor(private readonly prisma: PrismaClient) {}
 
   run<T>(work: (repositories: TransactionalRepositories) => Promise<T>): Promise<T> {
     return this.prisma.$transaction(

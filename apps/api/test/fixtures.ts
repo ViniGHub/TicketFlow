@@ -8,7 +8,7 @@ import {
   StripeEventProcessor,
 } from '@ticketflow/domain';
 
-import { PrismaUnitOfWork } from '../src/orders/persistence/prisma-unit-of-work';
+import { PrismaUnitOfWork } from '@ticketflow/persistence';
 import { orderRequestHash } from '../src/orders/request-hash';
 
 import { type CookieJar, sessionFor } from './app';

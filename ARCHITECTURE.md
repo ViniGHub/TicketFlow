@@ -291,7 +291,10 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
   publicação que falha (Redis fora) soma `attempts` e espera o próximo ciclo
   ([ADR 0012](docs/adr/0012-relay-da-outbox.md)).
 - **Jobs**: podem rodar mais de uma vez sem efeito colateral. O e-mail só é enviado para
-  tickets com `emailed_at IS NULL`, e `emailed_at` é gravado logo após o envio.
+  tickets com `emailed_at IS NULL` (e não anulados), e `emailed_at` é gravado logo após o
+  envio. Se o processo cair entre os dois, o e-mail sai de novo; no Resend, o
+  `Idempotency-Key` do pedido descarta a repetição por 24 h
+  ([ADR 0013](docs/adr/0013-email-de-ingressos.md)).
 
 ## 8. Jobs (BullMQ, no worker)
 
@@ -534,6 +537,8 @@ Registrados:
     lido depois, o que conta como venda e reserva
 12. `0012-relay-da-outbox.md`: trava durante a publicação, `jobId` da linha, publicação que
     não espera o Redis, falha que não trava o lote, ordem do shutdown
+13. `0013-email-de-ingressos.md`: um e-mail por pedido com os QR embutidos, `emailed_at` logo
+    depois do envio, Resend com `Idempotency-Key`, conexão dos consumidores separada
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

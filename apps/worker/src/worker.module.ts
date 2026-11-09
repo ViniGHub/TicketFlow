@@ -8,6 +8,10 @@ import {
 } from './heartbeat/heartbeat.service';
 import { OutboxModule, type OutboxModuleOptions } from './outbox/outbox.module';
 import { QueuesModule } from './queues/queues.module';
+import {
+  TicketEmailModule,
+  type TicketEmailModuleOptions,
+} from './ticket-email/ticket-email.module';
 
 export interface WorkerModuleOptions {
   databaseUrl: string;
@@ -15,6 +19,8 @@ export interface WorkerModuleOptions {
   heartbeat: HeartbeatOptions;
   /** Ritmo e tamanho do lote do relay da outbox; os testes encurtam o intervalo. */
   relay?: OutboxModuleOptions;
+  /** Remetente e transporte do e-mail de ingressos. */
+  email: TicketEmailModuleOptions;
 }
 
 @Module({})
@@ -26,6 +32,7 @@ export class WorkerModule {
         DatabaseModule.forRoot({ url: options.databaseUrl }),
         QueuesModule.forRoot({ redisUrl: options.redisUrl }),
         OutboxModule.forRoot(options.relay),
+        TicketEmailModule.forRoot(options.email),
       ],
       providers: [{ provide: HEARTBEAT_OPTIONS, useValue: options.heartbeat }, HeartbeatService],
     };

@@ -1,7 +1,7 @@
-import { BullModule, getQueueToken } from '@nestjs/bullmq';
-import { type DynamicModule, Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
+import { type DynamicModule, Module, type OnApplicationShutdown } from '@nestjs/common';
 import { OUTBOX_JOB_TYPES } from '@ticketflow/contracts';
-import { type Queue } from 'bullmq';
+import { Queue } from 'bullmq';
 
 import { DEFAULT_JOB_OPTIONS } from './job-options';
 import { BullMqJobPublisher, JOB_PUBLISHER } from './job-publisher';
@@ -26,8 +26,28 @@ export function outboxQueueOptions(redisUrl: string) {
 }
 
 /**
- * Filas do BullMQ, uma por tipo de job da outbox, e o `JOB_PUBLISHER` que publica nelas. As
- * filas fecham na última fase do shutdown (`onApplicationShutdown`).
+ * Filas do produtor, privadas do publicador. Não são registradas no BullModule de propósito:
+ * o worker de um consumidor (`@Processor`) herdaria a conexão da fila registrada, e a do
+ * produtor não espera o Redis voltar. Fecham na última fase do shutdown.
+ */
+export class OutboxQueues implements OnApplicationShutdown {
+  readonly queues: Queue[];
+
+  constructor(redisUrl: string) {
+    this.queues = outboxQueueOptions(redisUrl).map(
+      ({ name, ...options }) => new Queue(name, options),
+    );
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    await Promise.all(this.queues.map((queue) => queue.close()));
+  }
+}
+
+/**
+ * Conexão compartilhada dos consumidores (etapas 5.2 em diante), que espera o Redis voltar, e o
+ * `JOB_PUBLISHER` do relay, sobre as filas do produtor. Cada módulo consumidor registra a fila
+ * que consome (`BullModule.registerQueue`), sem conexão própria.
  */
 @Module({})
 export class QueuesModule {
@@ -35,16 +55,13 @@ export class QueuesModule {
     return {
       module: QueuesModule,
       global: true,
-      imports: [
-        // Conexão dos consumidores (etapas 5.2 em diante): esperam o Redis voltar.
-        BullModule.forRoot({ connection: redisConnectionOptions(redisUrl) }),
-        BullModule.registerQueue(...outboxQueueOptions(redisUrl)),
-      ],
+      imports: [BullModule.forRoot({ connection: redisConnectionOptions(redisUrl) })],
       providers: [
+        { provide: OutboxQueues, useFactory: () => new OutboxQueues(redisUrl) },
         {
           provide: JOB_PUBLISHER,
-          inject: OUTBOX_JOB_TYPES.map((name) => getQueueToken(name)),
-          useFactory: (...queues: Queue[]) => new BullMqJobPublisher(queues),
+          inject: [OutboxQueues],
+          useFactory: ({ queues }: OutboxQueues) => new BullMqJobPublisher(queues),
         },
       ],
       exports: [JOB_PUBLISHER],

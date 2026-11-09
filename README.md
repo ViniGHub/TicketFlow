@@ -220,6 +220,9 @@ ticketflow/
   com `FOR UPDATE SKIP LOCKED` e `jobId` igual ao id da linha: dois workers nunca publicam a
   mesma linha, e com o Redis fora a linha espera e sai quando ele volta. Jobs com 5 tentativas e
   backoff exponencial, falhas no log com `jobId` e `orderId`, shutdown gracioso.
+- ✅ **5.2 E-mail com ingressos:** um e-mail por pedido pago, com o QR de cada ingresso embutido
+  e a data no fuso do evento. Mailpit (SMTP) em desenvolvimento e Resend em produção, com
+  `Idempotency-Key`; `emailed_at` logo depois do envio, então reprocessar o job não reenvia.
 
 </details>
 
@@ -289,8 +292,8 @@ seed de novo (o Prisma 7 não roda o seed automaticamente no reset).
    data futura e qualquer CVC.
 
 4. Depois de pagar, o `stripe listen` mostra o `checkout.session.completed` entregue com 200, e
-   `GET /orders/{id}` responde `PAID`. Os ingressos ficam na tabela `tickets`; o e-mail com
-   eles sai pelo worker a partir da etapa 5.2.
+   `GET /orders/{id}` responde `PAID`. Com o worker rodando, o e-mail com o QR de cada
+   ingresso chega em segundos ao Mailpit (http://localhost:8025).
 5. Para conferir a idempotência, reenvie o evento com o id que o `stripe listen` mostrou. A
    API responde 200, e nenhum ingresso novo é criado:
 

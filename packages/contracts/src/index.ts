@@ -4,3 +4,4 @@ export * from './events.js';
 export * from './health.js';
 export * from './jobs.js';
 export * from './orders.js';
+export * from './tickets.js';

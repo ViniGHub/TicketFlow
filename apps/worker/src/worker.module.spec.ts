@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { isHeartbeatFresh } from './heartbeat/heartbeat';
 import { HeartbeatService } from './heartbeat/heartbeat.service';
+import { SendEventCancelledEmailProcessor } from './event-cancelled-email/send-event-cancelled-email.processor';
+import { RefundOrderProcessor } from './refunds/refund-order.processor';
 import { ExpireOrdersProcessor } from './stripe-sync/expire-orders.processor';
 import { ReconcileStripeProcessor } from './stripe-sync/reconcile-stripe.processor';
 import { SendTicketEmailProcessor } from './ticket-email/send-ticket-email.processor';
@@ -47,11 +49,15 @@ describe('WorkerModule', () => {
     // Cada consumidor só processa se o @nestjs/bullmq criou o worker dele.
     const workers = [
       app.get(SendTicketEmailProcessor),
+      app.get(SendEventCancelledEmailProcessor),
+      app.get(RefundOrderProcessor),
       app.get(ExpireOrdersProcessor),
       app.get(ReconcileStripeProcessor),
     ].map((processor) => processor.worker);
     expect(workers.map((worker) => worker.name)).toEqual([
       'send-ticket-email',
+      'send-event-cancelled-email',
+      'refund-order',
       'expire-orders',
       'reconcile-stripe',
     ]);

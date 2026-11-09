@@ -2,6 +2,7 @@ import { type DynamicModule, Module } from '@nestjs/common';
 
 import { DatabaseModule } from './database/database.module';
 import { EmailModule, type EmailModuleOptions } from './email/email.module';
+import { EventCancelledEmailModule } from './event-cancelled-email/event-cancelled-email.module';
 import {
   HEARTBEAT_OPTIONS,
   HeartbeatService,
@@ -10,6 +11,7 @@ import {
 import { OutboxModule, type OutboxModuleOptions } from './outbox/outbox.module';
 import { PaymentsModule, type PaymentsModuleOptions } from './payments/payments.module';
 import { QueuesModule } from './queues/queues.module';
+import { RefundsModule } from './refunds/refunds.module';
 import { StripeSyncModule } from './stripe-sync/stripe-sync.module';
 import { TicketEmailModule } from './ticket-email/ticket-email.module';
 
@@ -37,6 +39,8 @@ export class WorkerModule {
         PaymentsModule.forRoot(options.payments),
         EmailModule.forRoot(options.email),
         TicketEmailModule,
+        EventCancelledEmailModule,
+        RefundsModule,
         StripeSyncModule,
       ],
       providers: [{ provide: HEARTBEAT_OPTIONS, useValue: options.heartbeat }, HeartbeatService],

@@ -1,10 +1,13 @@
-import { SEND_TICKET_EMAIL_JOB } from '@ticketflow/contracts';
+import { REFUND_ORDER_JOB, SEND_TICKET_EMAIL_JOB } from '@ticketflow/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { FakeDatabase } from './fake-database.test-helper.js';
 import { type Order } from './order.js';
-import { type CheckoutSessionState, type PaymentEvent } from './ports.js';
+import { type ChargeState, type CheckoutSessionState, type PaymentEvent } from './ports.js';
 import {
+  CHARGE_REFUNDED,
+  CHECKOUT_SESSION_ASYNC_PAYMENT_FAILED,
+  CHECKOUT_SESSION_ASYNC_PAYMENT_SUCCEEDED,
   CHECKOUT_SESSION_COMPLETED,
   CHECKOUT_SESSION_EXPIRED,
   StripeEventProcessor,
@@ -17,11 +20,14 @@ const ORDER_ID = 'pedido-1';
 const SESSION_ID = 'cs_test_pedido-1';
 const EVENT_CREATED_AT = new Date('2026-11-20T12:05:00Z');
 
-/** Pedido de 2 ingressos do lote A e 1 do B, com a sessão gravada e o estoque já descontado. */
-function setup(overrides: Partial<Order> = {}) {
+/**
+ * Pedido de 2 ingressos do lote A e 1 do B, com a sessão gravada. Por padrão o estoque já está
+ * descontado e o lote A esgotou.
+ */
+function setup(overrides: Partial<Order> = {}, available = { a: 0, b: 5 }) {
   const db = new FakeDatabase();
-  db.addTicketType(lotA, { available: 0 });
-  db.addTicketType(lotB, { available: 5 });
+  db.addTicketType(lotA, { available: available.a });
+  db.addTicketType(lotB, { available: available.b });
   db.addOrder(ORDER_ID, {
     status: 'PENDING',
     stripeSessionId: SESSION_ID,
@@ -55,6 +61,7 @@ function sessionEvent(
       url: null,
       ...session,
     },
+    charge: null,
   };
 }
 
@@ -131,32 +138,16 @@ describe('checkout.session.completed', () => {
     expect([...db.stripeEvents.keys()]).toEqual(['evt_1', 'evt_2']);
   });
 
-  it('sessão concluída sem pagamento confirmado (Pix) fica para a etapa 4.3', async () => {
-    const { db, processor } = setup();
+  it('pagamento de pedido CANCELLED não é registrado, para o Stripe reenviar', async () => {
+    const { db, processor } = setup({ status: 'CANCELLED' });
 
-    const outcome = await processor.process(
-      sessionEvent(CHECKOUT_SESSION_COMPLETED, { paymentStatus: 'unpaid', paymentIntentId: null }),
-    );
+    await expect(processor.process(paid())).rejects.toBeInstanceOf(UnexpectedPaymentError);
 
-    expect(outcome).toEqual({ status: 'ignored', reason: 'payment-pending', orderId: ORDER_ID });
-    expect(db.order(ORDER_ID)?.status).toBe('PENDING');
+    expect(db.order(ORDER_ID)?.status).toBe('CANCELLED');
     expect(db.tickets).toEqual([]);
-    expect(db.stripeEvents.has('evt_1')).toBe(true);
+    expect(db.outbox).toEqual([]);
+    expect(db.stripeEvents.size).toBe(0);
   });
-
-  it.each(['EXPIRED', 'CANCELLED'] as const)(
-    'pagamento de pedido %s não é registrado, para o Stripe reenviar (etapa 4.3)',
-    async (status) => {
-      const { db, processor } = setup({ status });
-
-      await expect(processor.process(paid())).rejects.toBeInstanceOf(UnexpectedPaymentError);
-
-      expect(db.order(ORDER_ID)?.status).toBe(status);
-      expect(db.tickets).toEqual([]);
-      expect(db.outbox).toEqual([]);
-      expect(db.stripeEvents.size).toBe(0);
-    },
-  );
 
   it.each([
     ['outra sessão', 'cs_test_outra'],
@@ -254,6 +245,7 @@ describe('outros eventos', () => {
       type: 'charge.succeeded',
       createdAt: EVENT_CREATED_AT,
       session: null,
+      charge: null,
     });
 
     expect(outcome).toEqual({ status: 'ignored', reason: 'unhandled-type' });
@@ -285,5 +277,280 @@ describe('outros eventos', () => {
     });
     expect(db.tickets).toEqual([]);
     expect(db.stripeEvents.has('evt_1')).toBe(true);
+  });
+});
+
+const pending = (id = 'evt_1') =>
+  sessionEvent(
+    CHECKOUT_SESSION_COMPLETED,
+    { paymentStatus: 'unpaid', paymentIntentId: 'pi_1' },
+    id,
+  );
+const asyncSucceeded = (id = 'evt_2') =>
+  sessionEvent(CHECKOUT_SESSION_ASYNC_PAYMENT_SUCCEEDED, { paymentStatus: 'paid' }, id);
+const asyncFailed = (id = 'evt_2') =>
+  sessionEvent(
+    CHECKOUT_SESSION_ASYNC_PAYMENT_FAILED,
+    { paymentStatus: 'unpaid', paymentIntentId: 'pi_1' },
+    id,
+  );
+
+describe('pagamento assíncrono (Pix, boleto)', () => {
+  it('sessão concluída sem pagamento confirmado: PENDING → PROCESSING, estoque reservado', async () => {
+    const { db, processor } = setup();
+
+    const outcome = await processor.process(pending());
+
+    expect(outcome).toEqual({ status: 'processed', orderId: ORDER_ID, orderStatus: 'PROCESSING' });
+    expect(db.order(ORDER_ID)).toMatchObject({
+      status: 'PROCESSING',
+      stripePaymentIntentId: 'pi_1',
+      paidAt: null,
+    });
+    expect(db.releases).toEqual([]);
+    expect(db.tickets).toEqual([]);
+    expect(db.outbox).toEqual([]);
+  });
+
+  it('pagamento aprovado: PROCESSING → PAID, ingressos e e-mail', async () => {
+    const { db, processor } = setup({ status: 'PROCESSING', stripePaymentIntentId: 'pi_1' });
+
+    const outcome = await processor.process(asyncSucceeded());
+
+    expect(outcome).toEqual({ status: 'processed', orderId: ORDER_ID, orderStatus: 'PAID' });
+    expect(db.order(ORDER_ID)).toMatchObject({ status: 'PAID', paidAt: EVENT_CREATED_AT });
+    expect(db.tickets).toHaveLength(3);
+    expect(db.outbox).toEqual([{ type: SEND_TICKET_EMAIL_JOB, payload: { orderId: ORDER_ID } }]);
+  });
+
+  it('pagamento recusado: PROCESSING → EXPIRED e o estoque volta', async () => {
+    const { db, processor } = setup({ status: 'PROCESSING', stripePaymentIntentId: 'pi_1' });
+
+    const outcome = await processor.process(asyncFailed());
+
+    expect(outcome).toEqual({ status: 'processed', orderId: ORDER_ID, orderStatus: 'EXPIRED' });
+    expect(db.available(lotA)).toBe(2);
+    expect(db.available(lotB)).toBe(6);
+    expect(db.tickets).toEqual([]);
+  });
+
+  it('aprovação que chega antes do completed: PENDING → PAID, e o completed depois é ignorado', async () => {
+    const { db, processor } = setup();
+
+    await processor.process(asyncSucceeded('evt_2'));
+    const late = await processor.process(pending('evt_1'));
+
+    expect(db.order(ORDER_ID)?.status).toBe('PAID');
+    expect(late).toEqual({ status: 'ignored', reason: 'already-paid', orderId: ORDER_ID });
+    expect(db.tickets).toHaveLength(3);
+  });
+
+  it('recusa que chega antes do completed: PENDING → EXPIRED, e o completed depois é ignorado', async () => {
+    const { db, processor } = setup();
+
+    await processor.process(asyncFailed('evt_2'));
+    const late = await processor.process(pending('evt_1'));
+
+    expect(db.order(ORDER_ID)?.status).toBe('EXPIRED');
+    expect(late).toEqual({ status: 'ignored', reason: 'already-closed', orderId: ORDER_ID });
+    expect(db.available(lotA)).toBe(2);
+  });
+
+  it('recusa repetida por outro evento não devolve o estoque de novo', async () => {
+    const { db, processor } = setup({ status: 'PROCESSING', stripePaymentIntentId: 'pi_1' });
+
+    await processor.process(asyncFailed('evt_2'));
+    const again = await processor.process(asyncFailed('evt_3'));
+
+    expect(again).toEqual({ status: 'ignored', reason: 'already-closed', orderId: ORDER_ID });
+    expect(db.available(lotA)).toBe(2);
+  });
+
+  it.each([
+    ['sessão concluída', pending],
+    ['pagamento recusado', asyncFailed],
+  ])('%s de outra sessão não muda o pedido', async (_, event) => {
+    const { db, processor } = setup({ stripeSessionId: 'cs_test_outra' });
+
+    const outcome = await processor.process(event());
+
+    expect(outcome).toEqual({ status: 'ignored', reason: 'session-mismatch', orderId: ORDER_ID });
+    expect(db.order(ORDER_ID)?.status).toBe('PENDING');
+  });
+});
+
+describe('pagamento tardio (pedido EXPIRED)', () => {
+  it('com estoque: reserva de novo e vira PAID, com ingressos e e-mail', async () => {
+    const { db, processor } = setup({ status: 'EXPIRED' }, { a: 10, b: 10 });
+
+    const outcome = await processor.process(paid());
+
+    expect(outcome).toEqual({
+      status: 'processed',
+      orderId: ORDER_ID,
+      orderStatus: 'PAID',
+      warning: 'late-payment-reserved',
+    });
+    expect(db.available(lotA)).toBe(8);
+    expect(db.available(lotB)).toBe(9);
+    expect(db.tickets).toHaveLength(3);
+    expect(db.outbox).toEqual([{ type: SEND_TICKET_EMAIL_JOB, payload: { orderId: ORDER_ID } }]);
+  });
+
+  it('outro erro no meio do pagamento tardio não vira reembolso: desfaz tudo', async () => {
+    const { db, processor } = setup({ status: 'EXPIRED' }, { a: 10, b: 10 });
+    db.beforeOutboxAdd = () => {
+      throw new Error('falha simulada na outbox');
+    };
+
+    await expect(processor.process(paid())).rejects.toThrow('falha simulada na outbox');
+
+    expect(db.order(ORDER_ID)?.status).toBe('EXPIRED');
+    expect(db.available(lotA)).toBe(10);
+    expect(db.outbox).toEqual([]);
+    expect(db.stripeEvents.size).toBe(0);
+  });
+
+  it('pagamento assíncrono aprovado de pedido expirado segue o mesmo caminho', async () => {
+    const { db, processor } = setup({ status: 'EXPIRED' }, { a: 10, b: 10 });
+
+    await processor.process(asyncSucceeded());
+
+    expect(db.order(ORDER_ID)?.status).toBe('PAID');
+  });
+
+  it('sem estoque: REFUND_PENDING, refund-order na outbox, nenhum ingresso e nada descontado', async () => {
+    // O lote A tem estoque e o B não: a reserva do A precisa voltar.
+    const { db, processor } = setup({ status: 'EXPIRED' }, { a: 10, b: 0 });
+
+    const outcome = await processor.process(paid());
+
+    expect(outcome).toEqual({
+      status: 'processed',
+      orderId: ORDER_ID,
+      orderStatus: 'REFUND_PENDING',
+      warning: 'late-payment-refund',
+    });
+    expect(db.order(ORDER_ID)).toMatchObject({
+      status: 'REFUND_PENDING',
+      stripePaymentIntentId: 'pi_1',
+      paidAt: EVENT_CREATED_AT,
+    });
+    expect(db.available(lotA)).toBe(10);
+    expect(db.available(lotB)).toBe(0);
+    expect(db.tickets).toEqual([]);
+    expect(db.outbox).toEqual([{ type: REFUND_ORDER_JOB, payload: { orderId: ORDER_ID } }]);
+    expect(db.stripeEvents.has('evt_1')).toBe(true);
+  });
+
+  it('pedido grátis sem estoque não tem o que reembolsar: não é registrado', async () => {
+    const { db, processor } = setup({ status: 'EXPIRED', totalCents: 0 }, { a: 0, b: 0 });
+
+    await expect(
+      processor.process(
+        sessionEvent(CHECKOUT_SESSION_COMPLETED, {
+          paymentStatus: 'no_payment_required',
+          paymentIntentId: null,
+        }),
+      ),
+    ).rejects.toBeInstanceOf(UnexpectedPaymentError);
+
+    expect(db.order(ORDER_ID)?.status).toBe('EXPIRED');
+    expect(db.stripeEvents.size).toBe(0);
+  });
+
+  it('o mesmo pagamento tardio entregue de novo não reembolsa duas vezes', async () => {
+    const { db, processor } = setup({ status: 'EXPIRED' }, { a: 0, b: 0 });
+
+    await processor.process(paid('evt_1'));
+    const again = await processor.process(paid('evt_9'));
+
+    expect(again).toEqual({ status: 'ignored', reason: 'already-paid', orderId: ORDER_ID });
+    expect(db.outbox).toHaveLength(1);
+  });
+});
+
+function refundedCharge(charge: Partial<ChargeState> = {}, id = 'evt_r1'): PaymentEvent {
+  return {
+    id,
+    type: CHARGE_REFUNDED,
+    createdAt: EVENT_CREATED_AT,
+    session: null,
+    charge: { id: 'ch_1', paymentIntentId: 'pi_1', fullyRefunded: true, ...charge },
+  };
+}
+
+describe('charge.refunded', () => {
+  it('REFUND_PENDING → REFUNDED, sem devolver estoque', async () => {
+    const { db, processor } = setup({ status: 'REFUND_PENDING', stripePaymentIntentId: 'pi_1' });
+
+    const outcome = await processor.process(refundedCharge());
+
+    expect(outcome).toEqual({ status: 'processed', orderId: ORDER_ID, orderStatus: 'REFUNDED' });
+    expect(db.order(ORDER_ID)?.status).toBe('REFUNDED');
+    expect(db.locks).toEqual([ORDER_ID]);
+    expect(db.releases).toEqual([]);
+    expect(db.ticketVoids).toEqual([{ orderId: ORDER_ID, voidedAt: EVENT_CREATED_AT }]);
+  });
+
+  it('reembolso pelo painel de um pedido PAID: REFUNDED e os ingressos anulados', async () => {
+    const { db, processor } = setup({ status: 'PAID', stripePaymentIntentId: 'pi_1' });
+
+    const outcome = await processor.process(refundedCharge());
+
+    expect(outcome).toEqual({
+      status: 'processed',
+      orderId: ORDER_ID,
+      orderStatus: 'REFUNDED',
+      warning: 'refunded-outside-ticketflow',
+    });
+    expect(db.order(ORDER_ID)?.status).toBe('REFUNDED');
+    expect(db.ticketVoids).toEqual([{ orderId: ORDER_ID, voidedAt: EVENT_CREATED_AT }]);
+  });
+
+  it('o mesmo reembolso de novo, por outro evento, não muda nada', async () => {
+    const { db, processor } = setup({ status: 'REFUND_PENDING', stripePaymentIntentId: 'pi_1' });
+
+    await processor.process(refundedCharge({}, 'evt_r1'));
+    const again = await processor.process(refundedCharge({}, 'evt_r2'));
+
+    expect(again).toEqual({ status: 'ignored', reason: 'already-refunded', orderId: ORDER_ID });
+    expect(db.ticketVoids).toHaveLength(1);
+  });
+
+  it('reembolso parcial é registrado sem mudar o pedido', async () => {
+    const { db, processor } = setup({ status: 'PAID', stripePaymentIntentId: 'pi_1' });
+
+    const outcome = await processor.process(refundedCharge({ fullyRefunded: false }));
+
+    expect(outcome).toEqual({ status: 'ignored', reason: 'partial-refund', orderId: ORDER_ID });
+    expect(db.order(ORDER_ID)?.status).toBe('PAID');
+    expect(db.ticketVoids).toEqual([]);
+    expect(db.stripeEvents.has('evt_r1')).toBe(true);
+  });
+
+  it.each(['EXPIRED', 'PROCESSING'] as const)(
+    'reembolso de pedido %s (sem ingressos) é registrado sem mudar o pedido',
+    async (status) => {
+      const { db, processor } = setup({ status, stripePaymentIntentId: 'pi_1' });
+
+      const outcome = await processor.process(refundedCharge());
+
+      expect(outcome).toEqual({ status: 'ignored', reason: 'not-refundable', orderId: ORDER_ID });
+      expect(db.order(ORDER_ID)?.status).toBe(status);
+    },
+  );
+
+  it('charge de outro pagamento ou sem PaymentIntent é registrada sem mudar nada', async () => {
+    const { db, processor } = setup({ status: 'PAID', stripePaymentIntentId: 'pi_1' });
+
+    const other = await processor.process(refundedCharge({ paymentIntentId: 'pi_outro' }, 'e1'));
+    const none = await processor.process(refundedCharge({ paymentIntentId: null }, 'e2'));
+    const missing = await processor.process({ ...refundedCharge({}, 'e3'), charge: null });
+
+    expect(other).toEqual({ status: 'ignored', reason: 'order-not-found' });
+    expect(none).toEqual({ status: 'ignored', reason: 'not-ticketflow' });
+    expect(missing).toEqual({ status: 'ignored', reason: 'not-ticketflow' });
+    expect(db.order(ORDER_ID)?.status).toBe('PAID');
   });
 });

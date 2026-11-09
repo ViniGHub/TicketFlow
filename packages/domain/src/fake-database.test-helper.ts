@@ -129,6 +129,8 @@ export class FakeDatabase implements UnitOfWork {
   releases: { ticketTypeId: string; quantity: number }[] = [];
   locks: string[] = [];
   tickets: NewTicket[] = [];
+  /** Anulações de ingressos, por pedido (`voided_at`). */
+  ticketVoids: { orderId: string; voidedAt: Date }[] = [];
   outbox: OutboxMessage[] = [];
   /** `stripe_events`: id do evento → tipo. */
   stripeEvents = new Map<string, string>();
@@ -207,6 +209,7 @@ export class FakeDatabase implements UnitOfWork {
       ticketTypes: new Map([...this.ticketTypes].map(([id, lot]) => [id, { ...lot }])),
       orders: [...this.orders],
       tickets: [...this.tickets],
+      ticketVoids: [...this.ticketVoids],
       outbox: [...this.outbox],
       stripeEvents: new Map(this.stripeEvents),
     };
@@ -216,6 +219,7 @@ export class FakeDatabase implements UnitOfWork {
       this.ticketTypes = snapshot.ticketTypes;
       this.orders = snapshot.orders;
       this.tickets = snapshot.tickets;
+      this.ticketVoids = snapshot.ticketVoids;
       this.outbox = snapshot.outbox;
       this.stripeEvents = snapshot.stripeEvents;
       throw error;
@@ -316,6 +320,15 @@ export class FakeDatabase implements UnitOfWork {
           this.locks.push(id);
           return Promise.resolve(this.order(id) ?? null);
         },
+        lockByPaymentIntent: (paymentIntentId) => {
+          const order = this.allOrders().find(
+            (stored) => stored.stripePaymentIntentId === paymentIntentId,
+          );
+          if (order) {
+            this.locks.push(order.id);
+          }
+          return Promise.resolve(order ?? null);
+        },
         lockExpiredPending: (now, limit) =>
           Promise.resolve(
             this.orders
@@ -343,6 +356,12 @@ export class FakeDatabase implements UnitOfWork {
         createMany: (tickets) => {
           this.tickets.push(...tickets);
           return Promise.resolve();
+        },
+        voidByOrder: (orderId, voidedAt) => {
+          this.ticketVoids.push({ orderId, voidedAt });
+          return Promise.resolve(
+            this.tickets.filter((ticket) => ticket.orderId === orderId).length,
+          );
         },
       },
       stripeEvents: {

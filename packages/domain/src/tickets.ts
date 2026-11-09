@@ -23,3 +23,20 @@ export function ticketsFor(order: Order, newQrToken: () => string = generateQrTo
     })),
   );
 }
+
+/** Situação do ingresso para o comprador e na entrada (ARCHITECTURE.md, seção 9). */
+export type TicketStatus = 'VALID' | 'USED' | 'VOIDED';
+
+/**
+ * Anulado prevalece sobre usado: um ingresso reembolsado depois do check-in é mostrado como
+ * cancelado, o fato mais recente.
+ */
+export function ticketStatusOf(ticket: {
+  checkedInAt: Date | null;
+  voidedAt: Date | null;
+}): TicketStatus {
+  if (ticket.voidedAt) {
+    return 'VOIDED';
+  }
+  return ticket.checkedInAt ? 'USED' : 'VALID';
+}

@@ -1,5 +1,6 @@
 export * from './cancel-order.js';
 export * from './catalog.js';
+export * from './check-in.js';
 export * from './checkout.js';
 export * from './domain-error.js';
 export * from './expiration.js';
@@ -10,5 +11,6 @@ export * from './order-status.js';
 export * from './order-transition.js';
 export * from './place-order.js';
 export * from './ports.js';
+export * from './sales.js';
 export * from './stripe-event-processor.js';
 export * from './tickets.js';

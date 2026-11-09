@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { FakeDatabase } from './fake-database.test-helper.js';
-import { generateQrToken, QR_TOKEN_BYTES, ticketsFor } from './tickets.js';
+import { generateQrToken, QR_TOKEN_BYTES, ticketStatusOf, ticketsFor } from './tickets.js';
 
 const lotA = '0193a4f2-0000-7000-8000-00000000000a';
 const lotB = '0193a4f2-0000-7000-8000-00000000000b';
@@ -48,5 +48,18 @@ describe('ingressos do pedido', () => {
     const tokens = ticketsFor(order).map((ticket) => ticket.qrToken);
 
     expect(new Set(tokens).size).toBe(3);
+  });
+});
+
+describe('status do ingresso', () => {
+  const at = new Date('2026-12-01T20:00:00Z');
+
+  it.each([
+    ['válido', { checkedInAt: null, voidedAt: null }, 'VALID'],
+    ['usado', { checkedInAt: at, voidedAt: null }, 'USED'],
+    ['anulado', { checkedInAt: null, voidedAt: at }, 'VOIDED'],
+    ['anulado depois de usado', { checkedInAt: at, voidedAt: at }, 'VOIDED'],
+  ] as const)('%s', (_, ticket, status) => {
+    expect(ticketStatusOf(ticket)).toBe(status);
   });
 });

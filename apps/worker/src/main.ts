@@ -21,6 +21,11 @@ async function bootstrap(): Promise<void> {
     WorkerModule.register({
       databaseUrl: env.DATABASE_URL,
       redisUrl: env.REDIS_URL,
+      email: {
+        from: env.EMAIL_FROM,
+        smtp: { host: env.SMTP_HOST, port: env.SMTP_PORT },
+        ...(env.RESEND_API_KEY && { resendApiKey: env.RESEND_API_KEY }),
+      },
       heartbeat: { file: env.WORKER_HEARTBEAT_FILE, intervalMs: HEARTBEAT_INTERVAL_MS },
     }),
     { logger },

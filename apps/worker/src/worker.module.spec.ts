@@ -30,6 +30,8 @@ describe('WorkerModule', () => {
         // Porta sem Redis: as filas tentam reconectar em segundo plano, sem impedir a subida.
         redisUrl: 'redis://127.0.0.1:1',
         relay: { intervalMs: 60_000 },
+        // O nodemailer só conecta ao enviar: a porta não precisa ter servidor.
+        email: { from: 'ingressos@ticketflow.local', smtp: { host: '127.0.0.1', port: 1 } },
         heartbeat: { file, intervalMs: 60_000 },
       }),
       { logger: false },

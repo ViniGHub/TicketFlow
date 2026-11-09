@@ -1,4 +1,4 @@
-import { type Job } from 'bullmq';
+import { type Job, UnrecoverableError } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
 
 import { jobFields, LoggedProcessor } from './logged-processor';
@@ -54,6 +54,21 @@ describe('log dos jobs', () => {
         orderId: 'pedido-1',
       }),
     );
+  });
+
+  it('UnrecoverableError na primeira tentativa já é erro: o BullMQ não repete', () => {
+    const { logger, processor } = setup();
+
+    processor.onJobFailed(job(1), new UnrecoverableError('payload inválido'));
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Job sem como dar certo; ficou em failed',
+        jobId: 'outbox-1',
+        error: 'payload inválido',
+      }),
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it('falha sem o job registrado também vai para o log de erro', () => {

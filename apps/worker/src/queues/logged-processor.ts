@@ -1,12 +1,13 @@
 import { OnWorkerEvent, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { type Job } from 'bullmq';
+import { type Job, UnrecoverableError } from 'bullmq';
 
 /**
  * Base dos consumidores das filas (a partir da etapa 5.2). Cada conclusão e cada falha de job
  * vai para o log com `jobId` e `orderId` (ARCHITECTURE.md, seção 8). Falha com tentativas
- * sobrando é `warn`: o BullMQ tenta de novo com backoff. Na última tentativa é `error`: o job
- * fica em `failed`, a dead-letter, até alguém olhar.
+ * sobrando é `warn`: o BullMQ tenta de novo com backoff. Na última tentativa, ou com
+ * `UnrecoverableError` (o job nunca vai dar certo, ex.: payload inválido), é `error`: o job fica
+ * em `failed`, a dead-letter, até alguém olhar.
  */
 export abstract class LoggedProcessor extends WorkerHost {
   protected readonly logger: Logger;
@@ -35,7 +36,9 @@ export abstract class LoggedProcessor extends WorkerHost {
       attempts,
       error: error.message,
     };
-    if (job.attemptsMade >= attempts) {
+    if (error instanceof UnrecoverableError || error.name === 'UnrecoverableError') {
+      this.logger.error({ message: 'Job sem como dar certo; ficou em failed', ...fields });
+    } else if (job.attemptsMade >= attempts) {
       this.logger.error({ message: 'Job esgotou as tentativas e ficou em failed', ...fields });
     } else {
       this.logger.warn({ message: 'Job falhou; o BullMQ tenta de novo', ...fields });

@@ -189,6 +189,12 @@ describe('relay da outbox', () => {
           redisUrl,
           heartbeat: { file: join(dir, 'worker.heartbeat'), intervalMs: 60_000 },
           relay: { intervalMs: 1_000 },
+          // O consumidor da 5.2 também sobe: o pedido do payload não existe, e ele não envia nada.
+          email: {
+            from: 'ingressos@ticketflow.local',
+            smtp: { host: '127.0.0.1', port: 1 },
+            sender: { send: () => Promise.resolve() },
+          },
         }),
         { logger: false },
       );

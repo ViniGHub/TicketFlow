@@ -16,6 +16,7 @@ export const DOMAIN_ERROR_STATUS: Readonly<Record<string, HttpStatus>> = {
   // 409: a operação conflita com o estado atual do recurso.
   EVENT_NOT_EDITABLE: HttpStatus.CONFLICT,
   EVENT_NOT_DELETABLE: HttpStatus.CONFLICT,
+  EVENT_NOT_CANCELLABLE: HttpStatus.CONFLICT,
   EVENT_WITHOUT_TICKET_TYPES: HttpStatus.CONFLICT,
   TICKET_TYPE_TOTAL_BELOW_SOLD: HttpStatus.CONFLICT,
   // 422: entrada bem formada (passou no zod) que quebra uma regra que depende de outros dados.

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   type CreateEventRequest,
   type EventResponse,
@@ -14,9 +14,12 @@ import {
   assertEventEditable,
   assertEventSchedule,
   assertStartsInFuture,
+  cancelEvent,
   decidePublish,
   EventNotFoundError,
+  type UnitOfWork,
 } from '@ticketflow/domain';
+import { PrismaUnitOfWork } from '@ticketflow/persistence';
 import { z } from 'zod';
 
 import { decodeCursor, encodeCursor, toPage } from '../common/pagination';
@@ -36,7 +39,12 @@ const idCursorSchema = z.object({ id: z.uuid() });
 /** Eventos do catálogo. Escritas: só o organizador dono (ROADMAP, etapa 2.1). */
 @Injectable()
 export class EventsService {
-  constructor(@Inject(PrismaClient) private readonly prisma: PrismaClient) {}
+  private readonly logger = new Logger(EventsService.name);
+
+  constructor(
+    @Inject(PrismaClient) private readonly prisma: PrismaClient,
+    @Inject(PrismaUnitOfWork) private readonly uow: UnitOfWork,
+  ) {}
 
   /**
    * Catálogo público: só eventos publicados, em `[from, to)` (sem `from`, a partir de agora),
@@ -140,6 +148,30 @@ export class EventsService {
         data: { status: 'PUBLISHED' },
         include: withTicketTypes,
       });
+    });
+    return toEventResponse(event);
+  }
+
+  /**
+   * Cancela um evento publicado (ROADMAP, etapa 5.4; ADR 0015): reembolso dos pedidos pagos,
+   * fim das reservas pendentes e e-mail aos compradores, numa transação. Idempotente: cancelar
+   * de novo devolve o evento sem mudar nada.
+   */
+  async cancel(organizerId: string, eventId: string, now = new Date()): Promise<EventResponse> {
+    const result = await cancelEvent(this.uow, { eventId, organizerId, now });
+    if (result.outcome === 'cancelled') {
+      this.logger.log({
+        message: 'Evento cancelado',
+        eventId,
+        refunding: result.refunding.length,
+        refunded: result.refunded.length,
+        reservationsEnded: result.reservationsEnded.length,
+        awaitingPayment: result.awaitingPayment.length,
+      });
+    }
+    const event = await this.prisma.event.findUniqueOrThrow({
+      where: { id: eventId },
+      include: withTicketTypes,
     });
     return toEventResponse(event);
   }

@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBody,
+  ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiNoContentResponse,
@@ -157,6 +158,23 @@ export class OrganizerEventsController {
     @Param('id', uuidParamPipe) eventId: string,
   ): Promise<EventResponse> {
     return this.events.publish(user.id, eventId);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({
+    description:
+      'Evento cancelado: pedidos pagos vão para reembolso, com os ingressos anulados; reservas ' +
+      'pendentes terminam; os compradores recebem e-mail. Idempotente: já cancelado não muda.',
+    schema: eventSchema,
+  })
+  @ApiNotFoundResponse({ description: 'Evento inexistente ou de outro organizador.' })
+  @ApiConflictResponse({ description: 'Rascunho não se cancela; exclua (EVENT_NOT_CANCELLABLE).' })
+  cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParamPipe) eventId: string,
+  ): Promise<EventResponse> {
+    return this.events.cancel(user.id, eventId);
   }
 
   @Post(':id/ticket-types')

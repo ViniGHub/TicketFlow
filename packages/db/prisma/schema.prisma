@@ -138,7 +138,8 @@ model Order {
   /// SHA-256 do corpo normalizado, para detectar mesma chave com corpo diferente.
   requestHash           String?     @map("request_hash")
   stripeSessionId       String?     @unique @map("stripe_session_id")
-  stripePaymentIntentId String?     @map("stripe_payment_intent_id")
+  /// Um pagamento por pedido; o charge.refunded chega só com o PaymentIntent (ADR 0010).
+  stripePaymentIntentId String?     @unique @map("stripe_payment_intent_id")
   expiresAt             DateTime    @map("expires_at") @db.Timestamptz(3)
   paidAt                DateTime?   @map("paid_at") @db.Timestamptz(3)
   createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)

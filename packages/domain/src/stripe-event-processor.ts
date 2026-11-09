@@ -5,6 +5,7 @@ import {
   type SendTicketEmailPayload,
 } from '@ticketflow/contracts';
 
+import { refundForCancelledEvent } from './cancel-event.js';
 import { InsufficientStockError, type Order } from './order.js';
 import { type OrderStatus } from './order-status.js';
 import { transitionOrder } from './order-transition.js';
@@ -18,8 +19,8 @@ import {
 } from './ports.js';
 import { generateQrToken, ticketsFor } from './tickets.js';
 
-// Processamento dos eventos do Stripe (ROADMAP, etapas 4.2 e 4.3; ARCHITECTURE.md, seções 4,
-// 5 e 7; ADRs 0009 e 0010). Usado pelo webhook da API e, a partir da etapa 5.3, pelo worker.
+// Processamento dos eventos do Stripe (ROADMAP, etapas 4.2, 4.3 e 5.4; ARCHITECTURE.md, seções
+// 4, 5 e 7; ADRs 0009, 0010 e 0015). Usado pelo webhook da API e, a partir da etapa 5.3, pelo worker.
 
 export const CHECKOUT_SESSION_COMPLETED = 'checkout.session.completed';
 export const CHECKOUT_SESSION_ASYNC_PAYMENT_SUCCEEDED = 'checkout.session.async_payment_succeeded';
@@ -65,7 +66,9 @@ export type StripeEventWarning =
   /** Pagamento de pedido já expirado, sem estoque: o pedido será reembolsado. */
   | 'late-payment-refund'
   /** Reembolso feito fora do TicketFlow (painel do Stripe) num pedido pago. */
-  | 'refunded-outside-ticketflow';
+  | 'refunded-outside-ticketflow'
+  /** Pagamento de pedido de evento cancelado: registrado e devolvido, sem ingressos. */
+  | 'cancelled-event-refund';
 
 export type StripeEventOutcome =
   | {
@@ -181,6 +184,10 @@ export class StripeEventProcessor {
     }
     const changes = paymentChanges(session, paidAt);
 
+    if (order.status !== 'CANCELLED' && (await hasCancelledEvent(repositories, order))) {
+      const refunding = await refundCancelledEventPayment(repositories, order, changes, paidAt);
+      return processed(refunding, 'cancelled-event-refund');
+    }
     if (order.status === 'PENDING' || order.status === 'PROCESSING') {
       return processed(await this.markPaid(repositories, order, changes));
     }
@@ -313,6 +320,40 @@ async function refund(
   const refunded = await transitionOrder(repositories, refunding, 'REFUNDED');
   await repositories.tickets.voidByOrder(order.id, refundedAt);
   return processed(refunded, order.status === 'PAID' ? 'refunded-outside-ticketflow' : undefined);
+}
+
+/**
+ * Algum evento do pedido foi cancelado. Lido sem trava, depois de travar o pedido: o
+ * cancelamento trava o evento e depois os pedidos, então, se ele vier depois, encontra este
+ * pedido já pago e o reembolsa; se veio antes, este pagamento enxerga o evento cancelado
+ * (ADR 0015).
+ */
+async function hasCancelledEvent(
+  repositories: TransactionalRepositories,
+  order: Order,
+): Promise<boolean> {
+  const statuses = await repositories.catalog.findEventStatuses(
+    order.items.map((item) => item.ticketTypeId),
+  );
+  return statuses.includes('CANCELLED');
+}
+
+/**
+ * Pagamento de um evento cancelado: o pagamento fica registrado (`paid_at`, PaymentIntent) e é
+ * devolvido, sem emitir ingressos nem reservar estoque. Pendente ou em `PROCESSING` passa por
+ * `PAID`; expirado vai direto para `REFUND_PENDING`.
+ */
+async function refundCancelledEventPayment(
+  repositories: TransactionalRepositories,
+  order: Order,
+  changes: OrderStatusChanges,
+  at: Date,
+): Promise<Order> {
+  if (order.status === 'EXPIRED') {
+    return refundForCancelledEvent(repositories, order, at, changes);
+  }
+  const paid = await transitionOrder(repositories, order, 'PAID', changes);
+  return refundForCancelledEvent(repositories, paid, at);
 }
 
 /** `paid_at` e o PaymentIntent, gravados junto com o pagamento (pedido grátis não tem). */

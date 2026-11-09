@@ -1,8 +1,10 @@
 import { Prisma } from '@ticketflow/db';
 import {
   type CatalogRepository,
+  type EventStatus,
   IdempotencyKeyTakenError,
   type InventoryRepository,
+  type LockedEvent,
   type NewOrder,
   type NewTicket,
   type Order,
@@ -56,6 +58,31 @@ export class PrismaCatalogRepository implements CatalogRepository {
       select: { id: true, name: true, event: { select: { title: true } } },
     });
     return rows.map(({ id, name, event }) => ({ id, name, eventTitle: event.title }));
+  }
+
+  async lockOwnedEvent(eventId: string, organizerId: string): Promise<LockedEvent | null> {
+    // A mesma trava das escritas do catálogo na API (catalog-locks.ts).
+    const [event] = await this.tx.$queryRaw<{ id: string; status: EventStatus }[]>`
+      SELECT id, status::text AS status
+      FROM events
+      WHERE id = ${eventId}::uuid AND organizer_id = ${organizerId}::uuid
+      FOR UPDATE`;
+    return event ?? null;
+  }
+
+  async markEventCancelled(eventId: string, cancelledAt: Date): Promise<void> {
+    await this.tx.event.update({
+      where: { id: eventId },
+      data: { status: 'CANCELLED', cancelledAt },
+    });
+  }
+
+  async findEventStatuses(ticketTypeIds: readonly string[]): Promise<EventStatus[]> {
+    const events = await this.tx.event.findMany({
+      where: { ticketTypes: { some: { id: { in: [...ticketTypeIds] } } } },
+      select: { status: true },
+    });
+    return [...new Set(events.map((event) => event.status))];
   }
 }
 
@@ -160,6 +187,36 @@ export class PrismaOrderRepository implements OrderRepository {
       include: withItems,
     });
     return rows.map(toDomainOrder);
+  }
+
+  async lockActiveByEvent(eventId: string): Promise<Order[]> {
+    // Só as linhas de orders ficam travadas; o EXISTS lê os itens e os lotes sem trava.
+    const locked = await this.tx.$queryRaw<{ id: string }[]>`
+      SELECT o.id FROM orders o
+      WHERE o.status IN ('PENDING', 'PROCESSING', 'PAID')
+        AND EXISTS (
+          SELECT 1 FROM order_items i
+          JOIN ticket_types t ON t.id = i.ticket_type_id
+          WHERE i.order_id = o.id AND t.event_id = ${eventId}::uuid
+        )
+      ORDER BY o.id
+      FOR UPDATE`;
+    if (locked.length === 0) {
+      return [];
+    }
+    const rows = await this.tx.order.findMany({
+      where: { id: { in: locked.map((row) => row.id) } },
+      orderBy: { id: 'asc' },
+      include: withItems,
+    });
+    return rows.map(toDomainOrder);
+  }
+
+  async endReservation(id: string, at: Date): Promise<void> {
+    await this.tx.order.updateMany({
+      where: { id, expiresAt: { gt: at } },
+      data: { expiresAt: at },
+    });
   }
 
   async findAwaitingPayment(createdBefore: Date, limit: number): Promise<Order[]> {

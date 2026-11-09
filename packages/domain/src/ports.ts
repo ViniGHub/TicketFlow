@@ -35,6 +35,12 @@ export interface PurchasableTicketType {
   event: { id: string; status: EventStatus };
 }
 
+/** Evento travado para uma escrita do organizador. */
+export interface LockedEvent {
+  id: string;
+  status: EventStatus;
+}
+
 /** Nome do lote e título do evento, para descrever os itens na página de pagamento. */
 export interface TicketTypeLabel {
   id: string;
@@ -54,6 +60,22 @@ export interface CatalogRepository {
 
   /** Nomes dos lotes e dos eventos, sem trava. Lote inexistente fica fora do resultado. */
   findLabels(ticketTypeIds: readonly string[]): Promise<TicketTypeLabel[]>;
+
+  /**
+   * Trava o evento do organizador (`FOR UPDATE`), como as escritas do catálogo: as compras em
+   * andamento (`FOR SHARE`) terminam antes, e as novas esperam e enxergam o resultado.
+   * Inexistente ou de outro organizador: `null`.
+   */
+  lockOwnedEvent(eventId: string, organizerId: string): Promise<LockedEvent | null>;
+
+  /** `CANCELLED`, com `cancelled_at`. */
+  markEventCancelled(eventId: string, cancelledAt: Date): Promise<void>;
+
+  /**
+   * Status dos eventos dos lotes, sem repetição e sem trava: o pagamento confere se algum foi
+   * cancelado depois de travar o pedido (ADR 0015).
+   */
+  findEventStatuses(ticketTypeIds: readonly string[]): Promise<EventStatus[]>;
 }
 
 /**
@@ -117,6 +139,18 @@ export interface OrderRepository {
    * pedido (seção 5, passo 7).
    */
   findAwaitingPayment(createdBefore: Date, limit: number): Promise<Order[]>;
+
+  /**
+   * Trava, em ordem de id, os pedidos `PENDING`, `PROCESSING` ou `PAID` com algum item de lote
+   * do evento (cancelamento do evento, ADR 0015).
+   */
+  lockActiveByEvent(eventId: string): Promise<Order[]>;
+
+  /**
+   * Encerra a reserva em `at` (`expires_at`), se ela ia além. O job `expire-orders` expira a
+   * sessão no Stripe e devolve o estoque, na ordem de sempre (ADR 0007).
+   */
+  endReservation(id: string, at: Date): Promise<void>;
 
   /** Grava o novo status. A transição já foi validada pelo domínio (`assertTransition`). */
   updateStatus(id: string, status: OrderStatus, changes?: OrderStatusChanges): Promise<void>;

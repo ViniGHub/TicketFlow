@@ -1,3 +1,4 @@
+export * from './cancel-event.js';
 export * from './cancel-order.js';
 export * from './catalog.js';
 export * from './check-in.js';

@@ -103,8 +103,8 @@ describe('criação da Checkout Session', () => {
         metadata: { order_id: orderId },
         // Reserva de 30 min: a sessão vale 35, o mínimo do Stripe mais a folga.
         expires_at: Date.parse('2026-11-20T12:35:00Z') / 1000,
-        success_url: `${appUrl}/orders/${orderId}?checkout=success`,
-        cancel_url: `${appUrl}/orders/${orderId}?checkout=cancel`,
+        success_url: `${appUrl}/pedidos/${orderId}?checkout=success`,
+        cancel_url: `${appUrl}/pedidos/${orderId}?checkout=cancel`,
         locale: 'pt-BR',
       },
       { idempotencyKey: orderId },
@@ -144,7 +144,7 @@ describe('criação da Checkout Session', () => {
     await gateway.createCheckoutSession(request);
 
     const [params] = sessions.create.mock.calls[0] ?? [];
-    expect(params?.success_url).toBe(`${appUrl}/orders/${orderId}?checkout=success`);
+    expect(params?.success_url).toBe(`${appUrl}/pedidos/${orderId}?checkout=success`);
   });
 
   it('sessão criada sem URL é erro', async () => {

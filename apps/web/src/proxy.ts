@@ -33,5 +33,5 @@ export function proxy(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ['/api/:path*', '/conta/:path*', '/organizador/:path*'],
+  matcher: ['/api/:path*', '/conta/:path*', '/organizador/:path*', '/pedidos/:path*'],
 };

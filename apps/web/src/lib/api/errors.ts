@@ -39,6 +39,20 @@ const MESSAGES: Readonly<Record<string, string>> = {
   TOO_MANY_REQUESTS: 'Muitas tentativas seguidas. Espere um minuto e tente de novo.',
   SERVICE_UNAVAILABLE: 'O serviço está indisponível agora. Tente de novo em instantes.',
   BAD_REQUEST: 'Confira os dados informados.',
+  FORBIDDEN: 'Esta conta não pode fazer isso. Entre com uma conta de comprador.',
+  // Compra (ADR 0006 e 0008).
+  INSUFFICIENT_STOCK: 'Não há ingressos suficientes nesse lote. A disponibilidade foi atualizada.',
+  SALES_WINDOW_CLOSED: 'As vendas desse lote não estão abertas agora.',
+  EVENT_NOT_PUBLISHED: 'Este evento não está mais à venda.',
+  TICKET_TYPE_NOT_FOUND: 'Um dos lotes não existe mais. A página foi atualizada.',
+  MAX_PER_ORDER_EXCEEDED: 'A quantidade passa do limite por pedido desse lote.',
+  ORDER_TOTAL_TOO_SMALL: 'O valor mínimo de uma compra paga é R$ 0,50.',
+  ORDER_TOTAL_TOO_LARGE: 'O valor do pedido passa do limite. Divida a compra em mais pedidos.',
+  ORDER_NOT_FOUND: 'Pedido não encontrado.',
+  ORDER_NOT_CANCELLABLE: 'Este pedido não está mais reservado. O status foi atualizado.',
+  ORDER_PAYMENT_COMPLETED: 'O pagamento já foi feito: o pedido vai ser confirmado em instantes.',
+  CHECKOUT_UNAVAILABLE:
+    'O pagamento está indisponível agora e nada foi cobrado. Tente de novo em instantes.',
 };
 
 /** Mensagem para o usuário, em português; o código desconhecido cai numa genérica. */

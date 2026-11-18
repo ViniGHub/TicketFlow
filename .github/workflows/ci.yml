@@ -112,7 +112,7 @@ jobs:
       - name: Verificar endpoints
         run: |
           curl --fail --silent --show-error http://localhost:3000/health/live
-          curl --fail --silent --show-error --output /dev/null http://localhost:3001/
+          curl --fail --silent --show-error http://localhost:3001/health
           # O BFF: /api/* no site do front chega à API.
           curl --fail --silent --show-error http://localhost:3001/api/health/live
           docker compose --profile app ps

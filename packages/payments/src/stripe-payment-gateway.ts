@@ -139,7 +139,7 @@ export class StripePaymentGateway implements PaymentGateway {
 
   /** Página do pedido no front, que consulta `GET /orders/:id` (seção 5, passo 5). */
   private orderPageUrl(orderId: string, checkout: 'success' | 'cancel'): string {
-    const url = new URL(`/orders/${orderId}`, this.appUrl);
+    const url = new URL(`/pedidos/${orderId}`, this.appUrl);
     url.searchParams.set('checkout', checkout);
     return url.toString();
   }

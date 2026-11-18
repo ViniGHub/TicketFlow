@@ -10,6 +10,8 @@ export class ApiError extends Error {
     message: string,
     /** Erros de validação por campo (400). */
     readonly issues: readonly { path: string; message: string }[] = [],
+    /** A mensagem veio no corpo de erro da API (em português), não do HTTP. */
+    readonly fromApi = false,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -21,7 +23,7 @@ export function apiErrorFrom(response: Response, body: unknown): ApiError {
   const parsed = errorResponseSchema.safeParse(body);
   if (parsed.success) {
     const { code, message, issues } = parsed.data;
-    return new ApiError(response.status, code, message, issues);
+    return new ApiError(response.status, code, message, issues, true);
   }
   // 5xx sem o corpo da API: quem respondeu foi o BFF, porque a API não respondeu.
   const code = response.status >= 500 ? 'SERVICE_UNAVAILABLE' : `HTTP_${response.status}`;
@@ -55,11 +57,23 @@ const MESSAGES: Readonly<Record<string, string>> = {
     'O pagamento está indisponível agora e nada foi cobrado. Tente de novo em instantes.',
 };
 
-/** Mensagem para o usuário, em português; o código desconhecido cai numa genérica. */
+/**
+ * Mensagem para o usuário, em português. Código sem mensagem própria aqui: a da API, quando
+ * ela recusou algo de domínio (4xx), que já vem em português (ex.: "Cadastre ao menos um lote
+ * antes de publicar o evento."); senão, uma genérica.
+ */
 export function messageFor(error: unknown): string {
-  const code = error instanceof ApiError ? error.code : undefined;
-  return (code && MESSAGES[code]) ?? 'Algo deu errado. Tente de novo.';
+  if (!(error instanceof ApiError)) {
+    return GENERIC;
+  }
+  const known = MESSAGES[error.code];
+  if (known) {
+    return known;
+  }
+  return error.fromApi && error.status >= 400 && error.status < 500 ? error.message : GENERIC;
 }
+
+const GENERIC = 'Algo deu errado. Tente de novo.';
 
 /** Erro 4xx não melhora tentando de novo; 5xx e falha de rede, talvez. */
 export function isRetryable(error: unknown): boolean {

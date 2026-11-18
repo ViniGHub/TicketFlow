@@ -82,6 +82,19 @@ export class MyEventsController {
   ): Promise<Page<EventResponse>> {
     return this.events.listMine(user.id, query);
   }
+
+  @Get(':id')
+  @ApiOkResponse({
+    description: 'Evento do organizador em qualquer status (inclusive rascunho), com os lotes.',
+    schema: eventSchema,
+  })
+  @ApiNotFoundResponse({ description: 'Evento inexistente ou de outro organizador.' })
+  getMine(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParamPipe) eventId: string,
+  ): Promise<EventResponse> {
+    return this.events.getMine(user.id, eventId);
+  }
 }
 
 /**

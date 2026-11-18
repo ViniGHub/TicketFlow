@@ -19,6 +19,9 @@
   --danger-soft: oklch(0.96 0.03 25);
   --success: oklch(0.52 0.13 155);
   --success-soft: oklch(0.96 0.03 155);
+  /* Gráficos (painel de vendas): pares validados para daltonismo e contraste, por modo. */
+  --chart-sold: #3665e4;
+  --chart-reserved: #eb6834;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -36,6 +39,8 @@
     --danger-soft: oklch(0.3 0.07 25);
     --success: oklch(0.74 0.13 155);
     --success-soft: oklch(0.3 0.05 155);
+    --chart-sold: #4f7ff0;
+    --chart-reserved: #d95926;
   }
 }
 
@@ -53,6 +58,8 @@
   --color-danger-soft: var(--danger-soft);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
+  --color-chart-sold: var(--chart-sold);
+  --color-chart-reserved: var(--chart-reserved);
   --radius-control: 0.5rem;
   --radius-card: 0.75rem;
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;

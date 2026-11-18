@@ -1,4 +1,4 @@
-import { type ButtonHTMLAttributes } from 'react';
+import { type ButtonHTMLAttributes, type Ref } from 'react';
 
 import { cn } from './cn';
 import { Spinner } from './spinner';
@@ -27,6 +27,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   /** Enquanto `true`, mostra o indicador e não aceita outro clique (evita envio duplo). */
   loading?: boolean;
+  ref?: Ref<HTMLButtonElement>;
 }
 
 export function Button({

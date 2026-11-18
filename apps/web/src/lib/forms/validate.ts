@@ -1,4 +1,4 @@
-import { ApiError } from '../api/errors';
+import { ApiError, messageFor } from '../api/errors';
 
 // Validação dos formulários com os mesmos schemas zod da API (packages/contracts), com as
 // mensagens em português do próprio formulário.
@@ -30,12 +30,24 @@ export function validate<T, F extends string>(
   return { ok: false, errors: fieldErrorsOf(result.error.issues, messages) };
 }
 
-/** Os campos que a API recusou num 400, com as mesmas mensagens do formulário. */
+/**
+ * Os campos que a API recusou, com as mensagens do formulário: os de um 400 (validação) e,
+ * em `codeFields`, os erros de domínio que dizem respeito a um campo só (ex.: `EVENT_IN_PAST`
+ * na data do evento), com a mensagem da API.
+ */
 export function fieldErrorsFromApi<F extends string>(
   error: unknown,
   messages: Record<F, string>,
+  codeFields: Readonly<Partial<Record<string, F>>> = {},
 ): FieldErrors<F> {
-  if (!(error instanceof ApiError) || error.code !== 'BAD_REQUEST') {
+  if (!(error instanceof ApiError)) {
+    return {};
+  }
+  const field = codeFields[error.code];
+  if (field) {
+    return { [field]: messageFor(error) } as FieldErrors<F>;
+  }
+  if (error.code !== 'BAD_REQUEST') {
     return {};
   }
   return fieldErrorsOf(

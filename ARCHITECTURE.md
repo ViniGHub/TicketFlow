@@ -452,6 +452,10 @@ WHERE qr_token = :token AND event_id = :eventId
   receita (só pedidos `PAID`, com o preço gravado no pedido) e o reservado (`PENDING` e
   `PROCESSING`), mais os pedidos de cada status, mesmo com zero.
 
+Na área do organizador do front, `/organizador/eventos/<id>/vendas` mostra esse painel e
+`/organizador/eventos/<id>/check-in` valida o ingresso pelo código, por um leitor USB ou pela
+câmera ([ADR 0018](docs/adr/0018-area-do-organizador-no-front.md)).
+
 ## 10. Segurança
 
 - Senhas com **argon2id** (`node:crypto`, formato PHC). Login de e-mail inexistente também
@@ -593,6 +597,8 @@ Registrados:
     conferidos no CI
 17. `0017-jornada-do-comprador-no-front.md`: catálogo renderizado no servidor, `Idempotency-Key`
     por tentativa de compra, página do pedido que nunca assume pagamento, QR gerado no navegador
+18. `0018-area-do-organizador-no-front.md`: datas digitadas no fuso do evento, preço em reais
+    enviado em centavos, PATCH só com o que mudou, confirmação na página e check-in pela câmera
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

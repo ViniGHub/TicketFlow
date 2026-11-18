@@ -250,6 +250,10 @@ ticketflow/
   `Idempotency-Key` por tentativa, levando ao Stripe; página do pedido que acompanha o
   pagamento sem nunca dá-lo como confirmado por conta própria; e "Meus ingressos" com o QR de
   cada ingresso válido.
+- ✅ **6.3 Área do organizador:** meus eventos, criação e edição de evento e lotes, com as datas
+  no fuso do evento e o preço em reais; publicar, excluir o rascunho e cancelar o evento, com a
+  confirmação explicando o reembolso; painel de vendas por lote; e check-in pelo código, por
+  um leitor USB ou pela câmera do celular, com o resultado grande na tela.
 
 </details>
 
@@ -336,7 +340,8 @@ seed de novo (o Prisma 7 não roda o seed automaticamente no reset).
 6. Para ver a reconciliação, desligue o `stripe listen` antes de pagar outro pedido. Ele fica
    `PENDING` até o job `reconcile-stripe` do worker consultar a sessão, uns 10 a 25 min depois
    da compra, e aí vira `PAID`, com o e-mail no Mailpit.
-7. Para ver o reembolso, faça login como `organizador@ticketflow.local` e cancele o evento em
+7. Para ver o reembolso, faça login como `organizador@ticketflow.local` e cancele o evento na
+   área do organizador (`/organizador`, "Gerenciar", "Cancelar evento") ou em
    `POST /events/{id}/cancel`. Com o worker e o `stripe listen` rodando, o pedido pago vai para
    `REFUND_PENDING`, o Stripe devolve o pagamento, o `charge.refunded` deixa o pedido
    `REFUNDED` e o e-mail de cancelamento chega ao Mailpit.
@@ -410,6 +415,7 @@ As dependências são atualizadas pelo Dependabot.
 | **Cancelamento de evento sem Stripe**           | Reembolsos e avisos saem pela outbox, e o job de expiração encerra as sessões; pagamento depois do cancelamento vira reembolso ([ADR 0015](docs/adr/0015-cancelamento-de-evento-e-reembolso.md))  |
 | **BFF no proxy do Next**                        | O front chama a API no próprio site, com o endereço lido na execução; tipos gerados do OpenAPI e conferidos no CI ([ADR 0016](docs/adr/0016-bff-no-proxy-e-sessao-no-front.md))                   |
 | **Página do pedido não assume pagamento**       | Voltar do Stripe não prova nada: a página mostra o status gravado pelo webhook e acompanha por polling ([ADR 0017](docs/adr/0017-jornada-do-comprador-no-front.md))                               |
+| **PATCH só com o que mudou**                    | Reenviar a data de um evento que já passou faria a API recusá-lo; os erros de domínio aparecem no campo certo ([ADR 0018](docs/adr/0018-area-do-organizador-no-front.md))                         |
 
 ## 🔮 Depois do MVP
 

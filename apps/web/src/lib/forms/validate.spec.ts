@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { registerValuesOf, REGISTER_MESSAGES } from '../../app/cadastro/register-form';
 import { ApiError } from '../api/errors';
 
+import { firstInvalid, withoutField } from './use-form-errors';
 import { fieldErrorsFromApi, validate } from './validate';
 
 const LOGIN_MESSAGES = { email: 'Informe um e-mail válido.', password: 'Informe a senha.' };
@@ -69,5 +70,40 @@ describe('fieldErrorsFromApi', () => {
     expect(
       fieldErrorsFromApi(new ApiError(409, 'EMAIL_ALREADY_REGISTERED', ''), LOGIN_MESSAGES),
     ).toEqual({});
+  });
+});
+
+describe('erros na tela', () => {
+  const fields = ['title', 'venue', 'startsAt'] as const;
+
+  it('o foco vai para o primeiro campo com erro, na ordem da tela', () => {
+    expect(firstInvalid(fields, { startsAt: 'x', venue: 'y' })).toBe('venue');
+    expect(firstInvalid(fields, {})).toBeUndefined();
+  });
+
+  it('editar um campo tira só o erro dele', () => {
+    expect(withoutField({ title: 'a', venue: 'b' }, 'title')).toEqual({ venue: 'b' });
+    expect(withoutField({ venue: 'b' }, 'title')).toEqual({ venue: 'b' });
+  });
+});
+
+describe('fieldErrorsFromApi com erros de domínio', () => {
+  const messages = { startsAt: 'Informe a data.', title: 'Informe o título.' };
+  const inPast = new ApiError(
+    422,
+    'EVENT_IN_PAST',
+    'A data do evento precisa estar no futuro.',
+    [],
+    true,
+  );
+
+  it('o código ligado a um campo mostra a mensagem da API nele', () => {
+    expect(fieldErrorsFromApi(inPast, messages, { EVENT_IN_PAST: 'startsAt' })).toEqual({
+      startsAt: 'A data do evento precisa estar no futuro.',
+    });
+  });
+
+  it('código sem campo não marca campo nenhum', () => {
+    expect(fieldErrorsFromApi(inPast, messages)).toEqual({});
   });
 });

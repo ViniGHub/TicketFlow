@@ -16,6 +16,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.108.0",
     "@ticketflow/contracts": "workspace:*",
+    "jsqr": "^1.4.0",
     "next": "^16.4.5",
     "openapi-fetch": "^0.17.0",
     "qrcode": "^1.5.4",

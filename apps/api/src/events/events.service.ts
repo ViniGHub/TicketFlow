@@ -87,6 +87,21 @@ export class EventsService {
     return toEventResponse(event);
   }
 
+  /**
+   * Um evento do organizador em qualquer status, com os lotes: é o que a tela de edição lê
+   * (etapa 6.3). De outro organizador, 404, como no resto do catálogo.
+   */
+  async getMine(organizerId: string, eventId: string): Promise<EventResponse> {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, organizerId },
+      include: withTicketTypes,
+    });
+    if (!event) {
+      throw new EventNotFoundError();
+    }
+    return toEventResponse(event);
+  }
+
   /** Eventos do organizador em qualquer status, com os lotes; os criados por último primeiro. */
   async listMine(organizerId: string, query: MyEventsQuery): Promise<Page<EventResponse>> {
     const after = query.cursor ? decodeCursor(query.cursor, idCursorSchema) : undefined;

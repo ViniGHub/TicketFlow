@@ -245,6 +245,11 @@ ticketflow/
   tipos gerados do OpenAPI da API, conferidos no CI, e renova a sessão uma vez só quando o
   access token vence. Login, cadastro, logout, conta, área do organizador, componentes base e
   tokens de design.
+- ✅ **6.2 Jornada do comprador:** catálogo e página do evento renderizados no servidor, com as
+  datas no fuso de cada evento; escolha de ingressos por lote e compra com uma
+  `Idempotency-Key` por tentativa, levando ao Stripe; página do pedido que acompanha o
+  pagamento sem nunca dá-lo como confirmado por conta própria; e "Meus ingressos" com o QR de
+  cada ingresso válido.
 
 </details>
 
@@ -311,10 +316,12 @@ seed de novo (o Prisma 7 não roda o seed automaticamente no reset).
    # copie o whsec_... exibido para STRIPE_WEBHOOK_SECRET no .env e reinicie a API
    ```
 
-3. Pelo Swagger (http://localhost:3000/docs), faça login como `comprador@ticketflow.local`,
-   pegue o id de um lote em `GET /events/{id}` e crie o pedido em `POST /orders`. A resposta
-   traz `checkoutUrl`: abra no navegador e pague com o cartão `4242 4242 4242 4242`, qualquer
-   data futura e qualquer CVC.
+3. No front (http://localhost:3001), entre como `comprador@ticketflow.local`, abra um evento,
+   escolha os ingressos e clique em "Comprar". Pague com o cartão `4242 4242 4242 4242`,
+   qualquer data futura e qualquer CVC: o Stripe devolve para a página do pedido, que mostra
+   "confirmando o pagamento" até o webhook chegar, e os ingressos aparecem em "Meus ingressos".
+   Pelo Swagger (http://localhost:3000/docs), o mesmo pedido sai de `POST /orders`, cuja resposta
+   traz o `checkoutUrl`.
 
 4. Depois de pagar, o `stripe listen` mostra o `checkout.session.completed` entregue com 200, e
    `GET /orders/{id}` responde `PAID`. Com o worker rodando, o e-mail com o QR de cada
@@ -402,6 +409,7 @@ As dependências são atualizadas pelo Dependabot.
 | **Reconciliação pelo processador do webhook**   | Webhook perdido não perde a venda: o estado da sessão vira um evento sintético, deduplicado como os reais ([ADR 0014](docs/adr/0014-expiracao-e-reconciliacao-com-o-stripe.md))                   |
 | **Cancelamento de evento sem Stripe**           | Reembolsos e avisos saem pela outbox, e o job de expiração encerra as sessões; pagamento depois do cancelamento vira reembolso ([ADR 0015](docs/adr/0015-cancelamento-de-evento-e-reembolso.md))  |
 | **BFF no proxy do Next**                        | O front chama a API no próprio site, com o endereço lido na execução; tipos gerados do OpenAPI e conferidos no CI ([ADR 0016](docs/adr/0016-bff-no-proxy-e-sessao-no-front.md))                   |
+| **Página do pedido não assume pagamento**       | Voltar do Stripe não prova nada: a página mostra o status gravado pelo webhook e acompanha por polling ([ADR 0017](docs/adr/0017-jornada-do-comprador-no-front.md))                               |
 
 ## 🔮 Depois do MVP
 

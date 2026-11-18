@@ -163,7 +163,7 @@ estoque de novo ([ADR 0015](docs/adr/0015-cancelamento-de-evento-e-reembolso.md)
 2. **Sessão Stripe** (fora da transação, `startCheckout` no domínio): a API cria a Checkout
    Session (`mode: payment`, só cartão, `line_items` a partir de `order_items`,
    `metadata.order_id`, `client_reference_id = order.id`, `expires_at` ajustado aos limites do
-   Stripe, `success_url` e `cancel_url` em `APP_URL/orders/<id>`), passando
+   Stripe, `success_url` e `cancel_url` em `APP_URL/pedidos/<id>`), passando
    **`idempotencyKey: order.id`** para que uma retentativa não crie uma segunda sessão. Todos os
    parâmetros vêm do pedido gravado, nunca do relógio: o Stripe recusa a mesma chave com
    parâmetros diferentes ([ADR 0008](docs/adr/0008-checkout-session.md)). Depois trava o pedido,
@@ -200,8 +200,11 @@ estoque de novo ([ADR 0015](docs/adr/0015-cancelamento-de-evento-e-reembolso.md)
      TicketFlow, pedido inexistente, sessão diferente da gravada no pedido (sem dinheiro
      envolvido) e reembolso parcial também são gravados sem efeito.
    - Responde 200 rápido; trabalho pesado (QR code, e-mail) sai pela outbox.
-5. **Página de sucesso**: apenas consulta `GET /orders/:id` e mostra o status atual.
-   Se ainda `PENDING`/`PROCESSING`, faz polling por alguns segundos. **Nunca** marca como pago.
+5. **Página do pedido** (`/pedidos/<id>`, para onde o Stripe devolve o comprador): apenas
+   consulta `GET /orders/:id` e mostra o status atual. Se ainda `PENDING`/`PROCESSING`, faz
+   polling a cada 2 s por até 2 minutos; voltar pelo sucesso do Stripe com o pedido `PENDING`
+   mostra "confirmando o pagamento". **Nunca** marca como pago
+   ([ADR 0017](docs/adr/0017-jornada-do-comprador-no-front.md)).
 6. **Expiração (job `expire-orders`, a cada minuto)**: busca pedidos `PENDING` com
    `expires_at < now()` em lotes (`FOR UPDATE SKIP LOCKED`, numa transação curta). Para cada
    um, **primeiro** chama `stripe.checkout.sessions.expire(...)`, **fora de transação**, e
@@ -588,6 +591,8 @@ Registrados:
 16. `0016-bff-no-proxy-e-sessao-no-front.md`: BFF no `proxy.ts` com o `API_URL` da execução,
     páginas protegidas sem o segredo do JWT, renovação no navegador e tipos gerados do OpenAPI
     conferidos no CI
+17. `0017-jornada-do-comprador-no-front.md`: catálogo renderizado no servidor, `Idempotency-Key`
+    por tentativa de compra, página do pedido que nunca assume pagamento, QR gerado no navegador
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 

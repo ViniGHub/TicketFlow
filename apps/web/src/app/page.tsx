@@ -1,13 +1,26 @@
-export default function HomePage() {
+import { EventGrid } from '../components/catalog/event-grid';
+import { toEventCard } from '../lib/catalog/view';
+import { serverApi } from '../lib/server/api';
+
+// O catálogo muda a cada evento publicado e a cada compra: renderizado a cada visita.
+export const dynamic = 'force-dynamic';
+
+export default async function CatalogPage() {
+  const { data, response } = await serverApi().GET('/events');
+  if (!data) {
+    // Cai no error.tsx, com a opção de tentar de novo.
+    throw new Error(`Catálogo indisponível (HTTP ${response.status}).`);
+  }
+
   return (
-    <section className="flex flex-col gap-4 py-10">
-      <h1 className="text-4xl font-bold tracking-tight">
-        Ticket<span className="text-brand">Flow</span>
-      </h1>
-      <p className="max-w-2xl text-lg text-muted">
-        Venda de ingressos para eventos pequenos, com pagamento seguro e check-in por QR code.
-      </p>
-      <p className="text-sm text-muted">O catálogo de eventos chega na próxima etapa.</p>
-    </section>
+    <div className="flex flex-col gap-8">
+      <header className="flex flex-col gap-2">
+        <h1 className="text-3xl font-bold tracking-tight">Próximos eventos</h1>
+        <p className="text-muted">
+          Escolha o evento, garanta o ingresso e entre com o QR code no celular.
+        </p>
+      </header>
+      <EventGrid firstPage={{ items: data.items.map(toEventCard), nextCursor: data.nextCursor }} />
+    </div>
   );
 }

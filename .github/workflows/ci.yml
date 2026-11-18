@@ -26,6 +26,12 @@ jobs:
       - uses: ./.github/actions/setup
       - run: pnpm lint
       - run: pnpm typecheck
+      # Os tipos do front vêm do OpenAPI da API (ADR 0016). Mudar a API sem regerar falha aqui;
+      # regerar com incompatibilidade já quebrou o typecheck acima.
+      - name: Tipos da API em dia
+        run: |
+          pnpm api:types
+          git diff --exit-code -- apps/api/openapi.json apps/web/src/lib/api/schema.ts
 
   unit:
     name: Testes unitários
@@ -107,6 +113,8 @@ jobs:
         run: |
           curl --fail --silent --show-error http://localhost:3000/health/live
           curl --fail --silent --show-error --output /dev/null http://localhost:3001/
+          # O BFF: /api/* no site do front chega à API.
+          curl --fail --silent --show-error http://localhost:3001/api/health/live
           docker compose --profile app ps
 
       - name: Logs em caso de falha

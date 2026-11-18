@@ -244,6 +244,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/me/events/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations['MyEventsController_getMine'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/orders': {
     parameters: {
       query?: never;
@@ -1233,6 +1249,59 @@ export interface operations {
             nextCursor: string | null;
           };
         };
+      };
+    };
+  };
+  MyEventsController_getMine: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Evento do organizador em qualquer status (inclusive rascunho), com os lotes. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            venue: string;
+            timezone: string;
+            /** Format: date-time */
+            startsAt: string;
+            /** @enum {string} */
+            status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
+            description: string;
+            ticketTypes: {
+              /** Format: uuid */
+              id: string;
+              name: string;
+              priceCents: number;
+              total: number;
+              available: number;
+              /** Format: date-time */
+              salesStart: string;
+              /** Format: date-time */
+              salesEnd: string;
+              maxPerOrder: number;
+            }[];
+          };
+        };
+      };
+      /** @description Evento inexistente ou de outro organizador. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

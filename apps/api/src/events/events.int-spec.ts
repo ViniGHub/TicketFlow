@@ -194,6 +194,23 @@ describe('jornada do organizador (pronto quando da etapa 2.1)', () => {
     expect(secondPage.items[0]?.ticketTypes).toHaveLength(2);
     expect(secondPage.nextCursor).toBeNull();
   });
+
+  it('o organizador lê o próprio rascunho, com os lotes, pelo /me/events/:id', async () => {
+    const jar = await loginAs(ORGANIZER);
+    const draft = await createEvent(jar);
+    const ticketType = await createTicketType(jar, draft.id);
+
+    const response = await call(api.url, `/me/events/${draft.id}`, { jar });
+
+    expect(response.status).toBe(200);
+    expect(await json<EventResponse>(response)).toMatchObject({
+      id: draft.id,
+      status: 'DRAFT',
+      ticketTypes: [{ id: ticketType.id }],
+    });
+    // O detalhe público continua sem mostrar o rascunho.
+    expect((await call(api.url, `/events/${draft.id}`)).status).toBe(404);
+  });
 });
 
 describe('autorização', () => {
@@ -226,6 +243,10 @@ describe('autorização', () => {
       expect(response.status).toBe(404);
       expect(await errorCode(response)).toBe('EVENT_NOT_FOUND');
     }
+
+    const single = await call(api.url, `/me/events/${event.id}`, { jar: intruder });
+    expect(single.status).toBe(404);
+    expect(await errorCode(single)).toBe('EVENT_NOT_FOUND');
 
     const mine = await json<Page<EventResponse>>(
       await call(api.url, '/me/events', { jar: intruder }),

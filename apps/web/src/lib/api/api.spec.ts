@@ -125,6 +125,22 @@ describe('erros da API', () => {
     expect(messageFor(new Error('x'))).toBe('Algo deu errado. Tente de novo.');
   });
 
+  it('código sem mensagem própria: a mensagem em português que a API mandou, se for 4xx', () => {
+    const refused = apiErrorFrom(status(409), {
+      statusCode: 409,
+      code: 'EVENT_WITHOUT_TICKET_TYPES',
+      message: 'Cadastre ao menos um lote antes de publicar o evento.',
+    });
+    const crashed = apiErrorFrom(status(500), {
+      statusCode: 500,
+      code: 'INTERNAL',
+      message: 'Erro interno.',
+    });
+
+    expect(messageFor(refused)).toBe('Cadastre ao menos um lote antes de publicar o evento.');
+    expect(messageFor(crashed)).toBe('Algo deu errado. Tente de novo.');
+  });
+
   it('4xx não se repete; 5xx e falha de rede, sim', () => {
     expect(isRetryable(new ApiError(404, 'X', ''))).toBe(false);
     expect(isRetryable(new ApiError(503, 'X', ''))).toBe(true);

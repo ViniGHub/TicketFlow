@@ -18,6 +18,15 @@ export const DEFAULT_TIME_ZONE = 'America/Sao_Paulo';
 
 const LOCAL = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
 
+function isKnownTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** O relógio de parede do fuso no instante `ms`, como se fosse UTC. */
 function wallClockMs(ms: number, timeZone: string): number {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -44,11 +53,11 @@ function wallClockMs(ms: number, timeZone: string): number {
 /**
  * `2026-12-20T20:00` no fuso `timeZone` em ISO UTC (`2026-12-20T23:00:00.000Z` em Brasília).
  * Duas passadas acertam a diferença do fuso também perto de uma troca de horário de verão.
- * Texto fora do formato do `datetime-local`: `null`.
+ * Texto fora do formato do `datetime-local`, ou fuso que o Intl não conhece: `null`.
  */
 export function zonedLocalToIso(local: string, timeZone: string): string | null {
   const match = LOCAL.exec(local);
-  if (!match) {
+  if (!match || !isKnownTimeZone(timeZone)) {
     return null;
   }
   const [, year, month, day, hour, minute] = match.map(Number) as [

@@ -27,6 +27,10 @@ describe('zonedLocalToIso', () => {
     expect(zonedLocalToIso('', 'America/Sao_Paulo')).toBeNull();
   });
 
+  it('fuso que o Intl não conhece é recusado, sem lançar erro', () => {
+    expect(zonedLocalToIso('2026-12-20T20:00', 'Marte/Olympus')).toBeNull();
+  });
+
   it('o caminho de volta preenche o campo para editar', () => {
     expect(isoToZonedLocal('2026-12-21T00:00:00.000Z', 'America/Manaus')).toBe('2026-12-20T20:00');
     const local = '2026-03-15T09:30';

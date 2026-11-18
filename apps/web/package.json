@@ -10,7 +10,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run --project unit",
-    "test:integration": "vitest run --project integration"
+    "test:integration": "vitest run --project integration",
+    "api:types": "openapi-typescript ../api/openapi.json -o src/lib/api/schema.ts && prettier --write src/lib/api/schema.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.108.0",

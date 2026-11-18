@@ -104,7 +104,14 @@ describe('erros da API', () => {
   });
 
   it('corpo fora do formato vira HTTP_<status>', () => {
-    expect(apiErrorFrom(status(502), '<html>')).toMatchObject({ code: 'HTTP_502' });
+    expect(apiErrorFrom(status(404), '<html>')).toMatchObject({ code: 'HTTP_404' });
+  });
+
+  it('5xx sem o corpo da API é a API fora do ar: serviço indisponível', () => {
+    const error = apiErrorFrom(status(500), '<html>');
+
+    expect(error).toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
+    expect(messageFor(error)).toMatch(/indisponível/);
   });
 
   it('mensagens em português, com uma genérica para o código desconhecido', () => {

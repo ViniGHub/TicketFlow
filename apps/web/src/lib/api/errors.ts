@@ -23,7 +23,9 @@ export function apiErrorFrom(response: Response, body: unknown): ApiError {
     const { code, message, issues } = parsed.data;
     return new ApiError(response.status, code, message, issues);
   }
-  return new ApiError(response.status, `HTTP_${response.status}`, response.statusText);
+  // 5xx sem o corpo da API: quem respondeu foi o BFF, porque a API não respondeu.
+  const code = response.status >= 500 ? 'SERVICE_UNAVAILABLE' : `HTTP_${response.status}`;
+  return new ApiError(response.status, code, response.statusText);
 }
 
 export const networkError = () =>

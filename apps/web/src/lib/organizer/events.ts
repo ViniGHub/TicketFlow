@@ -5,6 +5,7 @@ import {
 } from '@ticketflow/contracts';
 
 import { type BadgeTone } from '../../components/ui/badge';
+import { changedFields } from '../forms/patch';
 import { type FieldErrors, validate } from '../forms/validate';
 import { DEFAULT_TIME_ZONE, isoToZonedLocal, zonedLocalToIso } from '../forms/zoned-time';
 
@@ -72,6 +73,11 @@ export function eventFormValuesFrom(form: FormData): EventFormValues {
   };
 }
 
+/** Erros de domínio da API que dizem respeito a um campo do evento. */
+export const EVENT_CODE_FIELDS: Readonly<Partial<Record<string, EventField>>> = {
+  EVENT_IN_PAST: 'startsAt',
+};
+
 /** Corpo de `POST /events` e `PATCH /events/:id`: o schema da API, com a data em ISO. */
 export type EventBody = Omit<CreateEventRequest, 'startsAt'> & { startsAt: string };
 
@@ -84,4 +90,9 @@ export function eventBodyFrom(
     return result;
   }
   return { ok: true, body: { ...result.data, startsAt: result.data.startsAt.toISOString() } };
+}
+
+/** Só o que mudou no evento, para o PATCH. */
+export function eventPatch(original: EventBody, next: EventBody): Partial<EventBody> {
+  return changedFields(original, next, ['startsAt']);
 }

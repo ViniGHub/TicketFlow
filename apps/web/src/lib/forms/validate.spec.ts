@@ -86,3 +86,24 @@ describe('erros na tela', () => {
     expect(withoutField({ venue: 'b' }, 'title')).toEqual({ venue: 'b' });
   });
 });
+
+describe('fieldErrorsFromApi com erros de domínio', () => {
+  const messages = { startsAt: 'Informe a data.', title: 'Informe o título.' };
+  const inPast = new ApiError(
+    422,
+    'EVENT_IN_PAST',
+    'A data do evento precisa estar no futuro.',
+    [],
+    true,
+  );
+
+  it('o código ligado a um campo mostra a mensagem da API nele', () => {
+    expect(fieldErrorsFromApi(inPast, messages, { EVENT_IN_PAST: 'startsAt' })).toEqual({
+      startsAt: 'A data do evento precisa estar no futuro.',
+    });
+  });
+
+  it('código sem campo não marca campo nenhum', () => {
+    expect(fieldErrorsFromApi(inPast, messages)).toEqual({});
+  });
+});

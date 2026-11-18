@@ -7,8 +7,8 @@ import { EventForm } from '../../../../components/organizer/event-form';
 import { Card } from '../../../../components/ui/card';
 import { api, unwrap } from '../../../../lib/api/client';
 import { EMPTY_EVENT, type EventBody } from '../../../../lib/organizer/events';
+import { MY_EVENTS_QUERY_KEY } from '../../../../lib/organizer/queries';
 import { useRequiredSession } from '../../../../lib/session/use-required-session';
-import { MY_EVENTS_QUERY_KEY } from '../../my-events';
 
 /** Cria o evento como rascunho e leva à gestão dele, onde entram os lotes. */
 export function NewEvent() {

@@ -11,9 +11,8 @@ import { api, unwrap } from '../../lib/api/client';
 import { messageFor } from '../../lib/api/errors';
 import { formatEventDateShort } from '../../lib/format';
 import { EVENT_STATUS } from '../../lib/organizer/events';
+import { MY_EVENTS_QUERY_KEY } from '../../lib/organizer/queries';
 import { useRequiredSession } from '../../lib/session/use-required-session';
-
-export const MY_EVENTS_QUERY_KEY = ['my-events'] as const;
 
 /** Os eventos do organizador em qualquer status, pelo cursor de GET /me/events. */
 export function MyEvents() {

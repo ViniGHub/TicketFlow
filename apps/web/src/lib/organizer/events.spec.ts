@@ -6,6 +6,7 @@ import {
   eventBodyFrom,
   eventFormValuesFrom,
   eventFormValuesOf,
+  eventPatch,
 } from './events';
 
 const filled = {
@@ -83,5 +84,29 @@ describe('valores do formulário', () => {
         startsAt: '2026-12-21T00:00:00.000Z',
       }),
     ).toMatchObject({ startsAt: '2026-12-20T20:00', timezone: 'America/Manaus' });
+  });
+});
+
+describe('eventPatch', () => {
+  const original = {
+    title: 'Jazz',
+    description: '',
+    venue: 'Parque',
+    timezone: 'America/Sao_Paulo',
+    startsAt: '2026-12-20T23:00:00Z',
+  };
+
+  it('leva só o que mudou: a data igual não volta para a API validar de novo', () => {
+    expect(
+      eventPatch(original, {
+        ...original,
+        title: 'Jazz no Parque',
+        startsAt: '2026-12-20T23:00:00.000Z',
+      }),
+    ).toEqual({ title: 'Jazz no Parque' });
+  });
+
+  it('sem mudança nenhuma, o PATCH fica vazio', () => {
+    expect(eventPatch(original, { ...original })).toEqual({});
   });
 });

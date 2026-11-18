@@ -9,6 +9,7 @@ import { useFormErrors } from '../../lib/forms/use-form-errors';
 import { fieldErrorsFromApi } from '../../lib/forms/validate';
 import {
   type EventBody,
+  EVENT_CODE_FIELDS,
   EVENT_FIELDS,
   EVENT_MESSAGES,
   type EventFormValues,
@@ -46,8 +47,10 @@ export function EventForm({ initial, submitLabel, cancelHref, onSubmit }: EventF
     try {
       await onSubmit(result.body);
     } catch (error) {
-      setFailure(error);
-      show(form, fieldErrorsFromApi(error, EVENT_MESSAGES));
+      const fieldErrors = fieldErrorsFromApi(error, EVENT_MESSAGES, EVENT_CODE_FIELDS);
+      // Erro de um campo aparece nele; o resto, no alerta do topo.
+      setFailure(Object.keys(fieldErrors).length > 0 ? null : error);
+      show(form, fieldErrors);
     } finally {
       setSaving(false);
     }

@@ -11,6 +11,7 @@ interface ProtectedRoute {
 export const PROTECTED_ROUTES: readonly ProtectedRoute[] = [
   { prefix: '/organizador', role: 'ORGANIZER' },
   { prefix: '/conta', role: null },
+  { prefix: '/pedidos', role: null },
 ];
 
 export const LOGIN_PATH = '/entrar';

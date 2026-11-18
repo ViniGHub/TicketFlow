@@ -50,6 +50,12 @@ describe('decideAccess', () => {
     expect(decideAccess('/conta/pedidos', buyer)).toEqual({ type: 'allow' });
   });
 
+  it('a página do pedido exige sessão: é para onde o Stripe devolve o comprador', () => {
+    expect(decideAccess('/pedidos/0193a4f2-0000-7000-8000-000000000001', null)).toEqual({
+      type: 'login',
+    });
+  });
+
   it('a área do organizador exige o papel ORGANIZER', () => {
     expect(decideAccess('/organizador', null)).toEqual({ type: 'login' });
     expect(decideAccess('/organizador/eventos', buyer)).toEqual({ type: 'forbidden' });

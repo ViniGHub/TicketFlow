@@ -48,6 +48,9 @@ const MESSAGES: Readonly<Record<string, string>> = {
   MAX_PER_ORDER_EXCEEDED: 'A quantidade passa do limite por pedido desse lote.',
   ORDER_TOTAL_TOO_SMALL: 'O valor mínimo de uma compra paga é R$ 0,50.',
   ORDER_TOTAL_TOO_LARGE: 'O valor do pedido passa do limite. Divida a compra em mais pedidos.',
+  ORDER_NOT_FOUND: 'Pedido não encontrado.',
+  ORDER_NOT_CANCELLABLE: 'Este pedido não está mais reservado. O status foi atualizado.',
+  ORDER_PAYMENT_COMPLETED: 'O pagamento já foi feito: o pedido vai ser confirmado em instantes.',
   CHECKOUT_UNAVAILABLE:
     'O pagamento está indisponível agora e nada foi cobrado. Tente de novo em instantes.',
 };

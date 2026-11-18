@@ -13,6 +13,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
+    "api:types": "turbo run build --filter=@ticketflow/api && pnpm --filter @ticketflow/api openapi:export && pnpm --filter @ticketflow/web api:types",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"

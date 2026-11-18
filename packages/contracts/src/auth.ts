@@ -5,6 +5,21 @@ export const ROLES = ['BUYER', 'ORGANIZER'] as const;
 export const roleSchema = z.enum(ROLES);
 export type Role = z.infer<typeof roleSchema>;
 
+/**
+ * Cookies da sessão (ARCHITECTURE.md, seção 10; ADR 0003). O access token é um JWT curto; o
+ * refresh token só viaja para as rotas de autenticação (`REFRESH_COOKIE_PATH`).
+ */
+export const ACCESS_COOKIE = 'tf_access';
+export const REFRESH_COOKIE = 'tf_refresh';
+
+/** Payload do access token (JWT HS256). `exp` em segundos, como no padrão. */
+export const accessTokenClaimsSchema = z.object({
+  sub: z.string(),
+  roles: z.array(roleSchema),
+  exp: z.number(),
+});
+export type AccessTokenClaims = z.infer<typeof accessTokenClaimsSchema>;
+
 /** E-mail normalizado (sem espaços, em minúsculas) antes da validação. */
 export const emailSchema = z
   .string()

@@ -1,7 +1,7 @@
 import { type NestApplicationOptions } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter, type NestExpressApplication } from '@nestjs/platform-express';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { DocumentBuilder, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
@@ -10,7 +10,8 @@ import { AppModule } from './app.module';
 import { ACCESS_COOKIE } from './auth/session';
 import { type ApiEnv } from './config/env';
 
-function setupSwagger(app: NestExpressApplication): void {
+/** O documento OpenAPI da API: o mesmo do /docs-json e do openapi.json do front (ADR 0016). */
+export function createOpenApiDocument(app: NestExpressApplication): OpenAPIObject {
   const config = new DocumentBuilder()
     .setTitle('TicketFlow API')
     .setDescription(
@@ -20,9 +21,12 @@ function setupSwagger(app: NestExpressApplication): void {
     .setVersion('0.1.0')
     .addCookieAuth(ACCESS_COOKIE)
     .build();
-  const document = SwaggerModule.createDocument(app, config);
-  // /docs (interface) e /docs-json (usado para gerar os tipos do front, etapa 6.1).
-  SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs-json' });
+  return SwaggerModule.createDocument(app, config);
+}
+
+function setupSwagger(app: NestExpressApplication): void {
+  // /docs (interface) e /docs-json (o mesmo documento do openapi.json, etapa 6.1).
+  SwaggerModule.setup('docs', app, createOpenApiDocument(app), { jsonDocumentUrl: 'docs-json' });
 }
 
 /**

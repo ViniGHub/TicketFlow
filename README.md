@@ -147,7 +147,7 @@ ticketflow/
 | 3. Núcleo transacional      | Pedidos e estoque à prova de concorrência | ✅ concluída |
 | 4. Pagamentos e ingressos   | Stripe Checkout, webhook e check-in       | ✅ concluída |
 | 5. Processamento assíncrono | Outbox, e-mail, expiração e reembolso     | ✅ concluída |
-| 6. Front-end                | Jornada do comprador e do organizador     | ⬜ a fazer   |
+| 6. Front-end                | Jornada do comprador e do organizador     | ⏳ em curso  |
 | 7. Produção                 | Observabilidade, deploy e segurança       | ⬜ a fazer   |
 | 8. Portfólio                | Documentação e material de entrevista     | ⬜ a fazer   |
 
@@ -237,6 +237,17 @@ ticketflow/
 
 </details>
 
+<details>
+<summary><b>O que já foi entregue na fase 6</b></summary>
+
+- ✅ **6.1 Base do front:** o `proxy.ts` do Next é o BFF de `/api/*` e protege as páginas por
+  papel; a sessão fica nos cookies httpOnly, nunca em `localStorage`. O cliente tipado usa os
+  tipos gerados do OpenAPI da API, conferidos no CI, e renova a sessão uma vez só quando o
+  access token vence. Login, cadastro, logout, conta, área do organizador, componentes base e
+  tokens de design.
+
+</details>
+
 O plano completo, com escopo e critérios de aceite de cada etapa, está no
 [ROADMAP.md](ROADMAP.md).
 
@@ -261,6 +272,9 @@ pnpm dev                      # web, api e worker
 | 🌐 Front-end       | http://localhost:3001      |
 | ⚙️ API + Swagger   | http://localhost:3000/docs |
 | 📬 Caixa de e-mail | http://localhost:8025      |
+
+O front chama a API pelo próprio endereço (`/api/*`, o BFF), então a sessão fica em cookies
+do site do front. Para entrar, use `http://localhost:3001/entrar` com um usuário do seed.
 
 <details>
 <summary><b>👥 Usuários do seed</b></summary>
@@ -347,6 +361,7 @@ pnpm lint
 pnpm typecheck
 pnpm test                # unitários (*.spec.ts), sem dependências externas
 pnpm test:integration    # integração (*.int-spec.ts): Postgres e Redis via Testcontainers
+pnpm api:types           # depois de mudar a API: regera o openapi.json e os tipos do front
 ```
 
 Os testes de integração precisam de Docker, mas **não** do `docker compose`: cada execução
@@ -386,6 +401,7 @@ As dependências são atualizadas pelo Dependabot.
 | **Checkout Session depois do commit**           | Chamada ao Stripe fora da transação, com a chave e os parâmetros do pedido; se falha, o pedido é cancelado ([ADR 0008](docs/adr/0008-checkout-session.md))                                        |
 | **Reconciliação pelo processador do webhook**   | Webhook perdido não perde a venda: o estado da sessão vira um evento sintético, deduplicado como os reais ([ADR 0014](docs/adr/0014-expiracao-e-reconciliacao-com-o-stripe.md))                   |
 | **Cancelamento de evento sem Stripe**           | Reembolsos e avisos saem pela outbox, e o job de expiração encerra as sessões; pagamento depois do cancelamento vira reembolso ([ADR 0015](docs/adr/0015-cancelamento-de-evento-e-reembolso.md))  |
+| **BFF no proxy do Next**                        | O front chama a API no próprio site, com o endereço lido na execução; tipos gerados do OpenAPI e conferidos no CI ([ADR 0016](docs/adr/0016-bff-no-proxy-e-sessao-no-front.md))                   |
 
 ## 🔮 Depois do MVP
 

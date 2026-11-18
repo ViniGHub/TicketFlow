@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run --project unit",
-    "test:integration": "vitest run --project integration"
+    "test:integration": "vitest run --project integration",
+    "openapi:export": "node dist/openapi.js && prettier --write openapi.json"
   },
   "dependencies": {
     "@nestjs/common": "^12.3.3",

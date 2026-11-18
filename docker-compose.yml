@@ -72,6 +72,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-com-pelo-menos-32-caracteres}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_dummy}
       RESERVATION_TTL_MINUTES: ${RESERVATION_TTL_MINUTES:-30}
+      # O navegador fala com a API pelo BFF do front (/api/*): o refresh vai para /api/auth.
+      REFRESH_COOKIE_PATH: /api/auth
     ports:
       - '3000:3000'
     depends_on:

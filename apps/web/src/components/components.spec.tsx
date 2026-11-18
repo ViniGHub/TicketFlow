@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SESSION_QUERY_KEY } from '../lib/session/use-session';
 
-import { SiteHeader } from './site-header';
+import { AccountNav, SiteHeader } from './site-header';
 import { Alert } from './ui/alert';
 import { Button } from './ui/button';
 import { Field } from './ui/field';
@@ -52,15 +52,26 @@ describe('Alert', () => {
 });
 
 describe('SiteHeader', () => {
-  function render(user: MeResponse | null) {
+  it('no servidor (e na hidratação) não depende da sessão: mostra o espaço reservado', () => {
     const queryClient = new QueryClient();
-    queryClient.setQueryData(SESSION_QUERY_KEY, user);
-    return renderToStaticMarkup(
+    queryClient.setQueryData(SESSION_QUERY_KEY, null);
+
+    const html = renderToStaticMarkup(
       <QueryClientProvider client={queryClient}>
         <SiteHeader />
       </QueryClientProvider>,
     );
-  }
+
+    expect(html).toContain('animate-pulse');
+    expect(html).not.toContain('href="/entrar"');
+  });
+});
+
+describe('AccountNav', () => {
+  const render = (user: MeResponse | null) =>
+    renderToStaticMarkup(
+      <AccountNav pending={false} user={user} signingOut={false} onSignOut={() => undefined} />,
+    );
 
   const ana: MeResponse = {
     id: '0193a4f2-0000-7000-8000-000000000001',
@@ -77,16 +88,20 @@ describe('SiteHeader', () => {
     expect(html).not.toContain('Sair');
   });
 
-  it('comprador logado: conta e sair, sem a área do organizador', () => {
+  it('comprador logado: ingressos, conta e sair, sem a área do organizador', () => {
     const html = render(ana);
 
+    expect(html).toContain('href="/conta/ingressos"');
     expect(html).toContain('href="/conta"');
     expect(html).toContain('Ana');
     expect(html).toContain('Sair');
     expect(html).not.toContain('href="/organizador"');
   });
 
-  it('organizador vê o link da área dele', () => {
-    expect(render({ ...ana, roles: ['BUYER', 'ORGANIZER'] })).toContain('href="/organizador"');
+  it('só organizador: a área dele, sem "Meus ingressos"', () => {
+    const html = render({ ...ana, roles: ['ORGANIZER'] });
+
+    expect(html).toContain('href="/organizador"');
+    expect(html).not.toContain('href="/conta/ingressos"');
   });
 });

@@ -1,7 +1,8 @@
 import { type Metadata } from 'next';
 
+import { TicketPicker } from '../../../components/checkout/ticket-picker';
 import { Card } from '../../../components/ui/card';
-import { type LotView, toLotView } from '../../../lib/catalog/view';
+import { toLotView } from '../../../lib/catalog/view';
 import { formatEventDate } from '../../../lib/format';
 
 import { loadEvent } from './event-data';
@@ -37,40 +38,8 @@ export default async function EventPage({ params }: EventPageProps) {
       </div>
       <Card className="flex flex-col gap-4 lg:sticky lg:top-6">
         <h2 className="text-lg font-semibold">Ingressos</h2>
-        <LotList lots={lots} />
+        <TicketPicker eventId={event.id} lots={lots} />
       </Card>
     </article>
   );
-}
-
-function LotList({ lots }: { lots: LotView[] }) {
-  if (lots.length === 0) {
-    return <p className="text-sm text-muted">Os ingressos ainda não estão à venda.</p>;
-  }
-  return (
-    <ul className="flex flex-col divide-y divide-line">
-      {lots.map((lot) => (
-        <li key={lot.id} className="flex items-center justify-between gap-4 py-3">
-          <div className="flex flex-col">
-            <span className="font-medium">{lot.name}</span>
-            <span className="text-sm text-muted">{lot.priceLabel}</span>
-          </div>
-          <LotStatus lot={lot} />
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function LotStatus({ lot }: { lot: LotView }) {
-  switch (lot.state.type) {
-    case 'on-sale':
-      return <span className="text-sm text-success">À venda</span>;
-    case 'sold-out':
-      return <span className="text-sm font-medium text-danger">Esgotado</span>;
-    case 'ended':
-      return <span className="text-sm text-muted">Vendas encerradas</span>;
-    case 'not-started':
-      return <span className="max-w-40 text-right text-sm text-muted">{lot.state.label}</span>;
-  }
 }

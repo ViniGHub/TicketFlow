@@ -1,6 +1,7 @@
 import {
   type InputHTMLAttributes,
   type ReactNode,
+  type Ref,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
   useId,
@@ -58,7 +59,8 @@ interface ControlProps {
   className: string;
 }
 
-export type FieldProps = FieldBase & InputHTMLAttributes<HTMLInputElement>;
+export type FieldProps = FieldBase &
+  InputHTMLAttributes<HTMLInputElement> & { ref?: Ref<HTMLInputElement> };
 
 export function Field({ label, error, hint, id, className, ...props }: FieldProps) {
   return (

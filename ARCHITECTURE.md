@@ -5,7 +5,7 @@
 ```
                 ┌──────────────┐
   Usuário ────▶ │  Frontend    │  Next.js (Vercel)
-                │  + BFF /api  │  rewrites → API (cookie first-party)
+                │  + BFF /api  │  proxy.ts → API (cookie first-party)
                 └──────┬───────┘
                        │ REST/JSON
                 ┌──────▼───────┐  mesma transação   ┌────────────────────┐
@@ -42,7 +42,7 @@ Runtime: **Node 24 LTS**.
 ```
 ticketflow/
 ├── apps/
-│   ├── web/                 # Next.js (App Router) + BFF via rewrites
+│   ├── web/                 # Next.js (App Router) + BFF no proxy.ts
 │   ├── api/                 # NestJS (HTTP)
 │   └── worker/              # NestJS standalone (createApplicationContext) + @nestjs/bullmq
 ├── packages/
@@ -374,7 +374,8 @@ SQL equivalente: `UPDATE ticket_types SET available = available - :qty WHERE id 
 | GET               | `/events/:id/sales`                         | ORGANIZER (dono)  | métricas de vendas                      |
 | GET               | `/health/live`, `/health/ready`             | pública           | liveness / readiness (banco e Redis)    |
 
-Documentação OpenAPI/Swagger em `/docs`; o JSON em `/docs-json` alimenta a geração de tipos
+Documentação OpenAPI/Swagger em `/docs`; o mesmo documento, exportado em `apps/api/openapi.json`
+por `pnpm api:types`, alimenta a geração de tipos
 do front-end.
 
 **Catálogo** ([ADR 0004](docs/adr/0004-catalogo-cursor-e-trava-do-evento.md)):
@@ -457,9 +458,16 @@ WHERE qr_token = :token AND event_id = :eventId
   guardado como SHA-256 em `refresh_tokens`, rotacionado a cada uso numa transação com
   `FOR UPDATE`; reuso de token revogado revoga a família inteira). `Secure`, `SameSite=Lax`.
   Detalhes em [ADR 0003](docs/adr/0003-sessao-em-cookie-e-rotacao-de-refresh.md).
-- **Front e API no mesmo site**: o Next.js expõe `/api/*` via `rewrites` para a API (BFF).
-  O navegador só fala com o domínio do front, então o cookie é first-party e não depende de
-  cookies de terceiros. Alternativa: domínio próprio com `app.` e `api.` no mesmo domínio.
+- **Front e API no mesmo site**: o `proxy.ts` do Next reescreve `/api/*` para a API (BFF),
+  lendo o `API_URL` a cada requisição. O navegador só fala com o domínio do front, então o
+  cookie é first-party e não depende de cookies de terceiros. Alternativa: domínio próprio com
+  `app.` e `api.` no mesmo domínio
+  ([ADR 0016](docs/adr/0016-bff-no-proxy-e-sessao-no-front.md)).
+- **Páginas protegidas no front**: o proxy lê o payload do access token, sem conferir a
+  assinatura (o front não tem o `JWT_SECRET`), e decide só qual página mostrar. `/conta`
+  exige sessão e `/organizador`, o papel `ORGANIZER`. Quem autoriza é a API, a cada chamada.
+  A renovação acontece no navegador: o login e o cliente da API chamam `/api/auth/refresh`,
+  o único caminho para onde o cookie de refresh viaja.
 - Proteção CSRF: `SameSite=Lax` + checagem de `Origin` nas rotas que alteram estado (aceita
   o `APP_URL` e, fora de produção, a origem da própria API para o Swagger; sem `Origin` passa,
   `Origin: null` é recusado).
@@ -502,10 +510,10 @@ EMAIL_FROM=ingressos@ticketflow.local
 RESEND_API_KEY=            # produção (opcional)
 OTEL_EXPORTER_OTLP_ENDPOINT=   # opcional
 TRUST_PROXY=false              # true atrás de proxy reverso (IP real do cliente no rate limit)
-REFRESH_COOKIE_PATH=/auth      # caminho do cookie de refresh; /api/auth atrás do BFF
+REFRESH_COOKIE_PATH=/api/auth  # cookie de refresh só vai para /api/auth (o front chama a API pelo BFF)
 
 # Web
-API_URL=http://localhost:3000   # destino dos rewrites /api/* (server-side, não exposto ao browser)
+API_URL=http://localhost:3000   # destino do BFF /api/* (lido pelo proxy.ts, não exposto ao browser)
 ```
 
 ## 12. Observabilidade
@@ -577,6 +585,9 @@ Registrados:
 15. `0015-cancelamento-de-evento-e-reembolso.md`: cancelamento numa transação sem Stripe,
     reservas encerradas para o job de expiração, pagamento de evento cancelado vira reembolso,
     `refund-order` idempotente
+16. `0016-bff-no-proxy-e-sessao-no-front.md`: BFF no `proxy.ts` com o `API_URL` da execução,
+    páginas protegidas sem o segredo do JWT, renovação no navegador e tipos gerados do OpenAPI
+    conferidos no CI
 
 Sugeridos (recebem o próximo número livre quando forem escritos):
 
@@ -584,4 +595,3 @@ Sugeridos (recebem o próximo número livre quando forem escritos):
 - `controle-de-estoque-atomico`
 - `fila-bullmq-para-jobs-assincronos`
 - `transactional-outbox`: por que não enfileirar direto (alternativa avaliada: pg-boss)
-- `sessao-em-cookie-com-bff`: cookies first-party via rewrites do Next.js

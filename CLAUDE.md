@@ -19,7 +19,7 @@ escopo de etapas seguintes.
 ## Stack
 
 - **Node 24 LTS**. Monorepo com **pnpm workspaces + Turborepo**
-- `apps/web`: Next.js (App Router) + TypeScript + Tailwind; BFF via `rewrites` de `/api/*`
+- `apps/web`: Next.js (App Router) + TypeScript + Tailwind; BFF de `/api/*` no `proxy.ts`
 - `apps/api`: NestJS + TypeScript
 - `apps/worker`: NestJS standalone (`createApplicationContext`) + `@nestjs/bullmq`
 - `packages/db`: Prisma (schema, migrations, client compartilhado)
@@ -43,6 +43,7 @@ pnpm lint
 pnpm typecheck
 pnpm test                                     # unitários
 pnpm test:integration                         # sobe postgres e redis via Testcontainers (exige Docker)
+pnpm api:types                                # regera o openapi.json e os tipos do front (depois de mudar a API)
 pnpm build
 ```
 
